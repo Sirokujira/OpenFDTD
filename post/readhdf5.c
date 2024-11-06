@@ -180,7 +180,7 @@ void readhdf5() {
     dataset_id = H5Dopen(metadata_group_id, "Surface", H5P_DEFAULT);
     status = H5Dread(dataset_id, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, Surface);
     if (status < 0) {
-        fprintf(stderr, "Error reading dataset: %s\n", Surface);
+        fprintf(stderr, "Error reading dataset: %s¥n", Surface);
     }
     H5Dclose(dataset_id);
     H5Tclose(memtype);
@@ -201,7 +201,7 @@ void readhdf5() {
     dataset_id = H5Dopen(metadata_group_id, COUPLING_DATASET_NAME, H5P_DEFAULT);
     status = H5Dread(dataset_id, datatype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, coupling_data);
     if (status < 0) {
-        fprintf(stderr, "Error reading dataset: %s\n", COUPLING_DATASET_NAME);
+        fprintf(stderr, "Error reading dataset: %s¥n", COUPLING_DATASET_NAME);
     }
     //coupling_data から
     H5Dclose(dataset_id);
@@ -218,7 +218,7 @@ void readhdf5() {
     dataset_id = H5Dopen(metadata_group_id, SPARA_DATASET_NAME, H5P_DEFAULT);
     status = H5Dread(dataset_id, datatype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, spara_data);
     if (status < 0) {
-        fprintf(stderr, "Error reading dataset: %s\n", SPARA_DATASET_NAME);
+        fprintf(stderr, "Error reading dataset: %s¥n", SPARA_DATASET_NAME);
     }
     // spara_data から Spara への加工]
     //Spara  =    (d_complex_t *)malloc(sizeof(d_complex_t) * NPoint * NFreq1);
@@ -246,7 +246,7 @@ void readhdf5() {
     dataset_id = H5Dopen(metadata_group_id, CROSS_SECTION_DATASET_NAME, H5P_DEFAULT);
     status = H5Dread(dataset_id, datatype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, cross_section_data);
     if (status < 0) {
-        fprintf(stderr, "Error reading dataset: %s\n", CROSS_SECTION_DATASET_NAME);
+        fprintf(stderr, "Error reading dataset: %s¥n", CROSS_SECTION_DATASET_NAME);
     }
     cross_section_data から 
     H5Dclose(dataset_id);
@@ -254,7 +254,7 @@ void readhdf5() {
 */
 
     // input_impedance データの読み込み
-    fprintf(stdout, "input_impedance_data (start)\n");
+    fprintf(stdout, "input_impedance_data (start)¥n");
     input_impedance_data_t input_impedance_data[NFeed][NFreq1];
     
     hid_t memtype_id;
@@ -272,7 +272,7 @@ void readhdf5() {
     dataset_id = H5Dopen(metadata_group_id, ZIN_DATASET_NAME, H5P_DEFAULT);
     status = H5Dread(dataset_id, memtype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, input_impedance_data);
     if (status < 0) {
-        fprintf(stderr, "Error reading dataset: %s\n", ZIN_DATASET_NAME);
+        fprintf(stderr, "Error reading dataset: %s¥n", ZIN_DATASET_NAME);
     }
     //input_impedance_data から Zin への加工
     //Zin = (d_complex_t *)malloc(sizeof(d_complex_t) * NFeed * NFreq1);
@@ -285,7 +285,7 @@ void readhdf5() {
             Ref[id] = input_impedance_data[ifeed][ifreq].ref;
         }
     }
-    fprintf(stdout, "input_impedance_data (end)\n");
+    fprintf(stdout, "input_impedance_data (end)¥n");
     H5Dclose(dataset_id);
     H5Tclose(memtype_id);
 
@@ -295,4 +295,3 @@ void readhdf5() {
     // HDF5ファイルのクローズ
     H5Fclose(file_id);
 }
-

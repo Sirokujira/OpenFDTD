@@ -98,13 +98,13 @@ void setup_node(int nxr, int nyr, int nzr, double *xr, double *yr, double *zr, i
 /*
     // debug
     for (int i = 0; i <= Nx; i++) {
-        printf("Xn[%d]=%.5f\n", i, Xn[i] * 1e3);
+        printf("Xn[%d]=%.5f¥n", i, Xn[i] * 1e3);
     }
     for (int j = 0; j <= Ny; j++) {
-        printf("Yn[%d]=%.5f\n", j, Yn[j] * 1e3);
+        printf("Yn[%d]=%.5f¥n", j, Yn[j] * 1e3);
     }
     for (int k = 0; k <= Nz; k++) {
-        printf("Zn[%d]=%.5f\n", k, Zn[k] * 1e3);
+        printf("Zn[%d]=%.5f¥n", k, Zn[k] * 1e3);
     }
 */
 }
@@ -129,13 +129,13 @@ void setup_center(void)
 /*
     // debug
     for (int i = 0; i < Nx; i++) {
-        printf("Xc[%d]=%.5f\n", i, Xc[i] * 1e3);
+        printf("Xc[%d]=%.5f¥n", i, Xc[i] * 1e3);
     }
     for (int j = 0; j < Ny; j++) {
-        printf("Yc[%d]=%.5f\n", j, Yc[j] * 1e3);
+        printf("Yc[%d]=%.5f¥n", j, Yc[j] * 1e3);
     }
     for (int k = 0; k < Nz; k++) {
-        printf("Zc[%d]=%.5f\n", k, Zc[k] * 1e3);
+        printf("Zc[%d]=%.5f¥n", k, Zc[k] * 1e3);
     }
 */
 }
@@ -300,8 +300,8 @@ void setup_planewave(void)
     Planewave.ri[0] = - r1[0];
     Planewave.ri[1] = - r1[1];
     Planewave.ri[2] = - r1[2];
-    printf("propagation vector.\n");
-    printf("%.10f %.10f %.10f\n", Planewave.r0[0], Planewave.r0[1], Planewave.r0[2]);
+    printf("propagation vector.¥n");
+    printf("%.10f %.10f %.10f¥n", Planewave.r0[0], Planewave.r0[1], Planewave.r0[2]);
 
     // E
     if      (Planewave.pol == 1) {
@@ -316,15 +316,15 @@ void setup_planewave(void)
         Planewave.ei[1] = + p1[1];
         Planewave.ei[2] = + p1[2];
     }
-    printf("E.\n");
-    printf("%.10f %.10f %.10f\n", Planewave.ei[0], Planewave.ei[1], Planewave.ei[2]);
+    printf("E.¥n");
+    printf("%.10f %.10f %.10f¥n", Planewave.ei[0], Planewave.ei[1], Planewave.ei[2]);
 
     // H = E X r
     Planewave.hi[0] = (Planewave.ei[1] * r1[2]) - (Planewave.ei[2] * r1[1]);
     Planewave.hi[1] = (Planewave.ei[2] * r1[0]) - (Planewave.ei[0] * r1[2]);
     Planewave.hi[2] = (Planewave.ei[0] * r1[1]) - (Planewave.ei[1] * r1[0]);
-    printf("H.\n");
-    printf("%.10f %.10f %.10f\n", Planewave.hi[0], Planewave.hi[1], Planewave.hi[2]);
+    printf("H.¥n");
+    printf("%.10f %.10f %.10f¥n", Planewave.hi[0], Planewave.hi[1], Planewave.hi[2]);
 
     // initial position
     const double f0 = (Freq2[0] + Freq2[NFreq2 - 1]) / 2;
@@ -332,17 +332,19 @@ void setup_planewave(void)
                           (Yn[0] - Yn[Ny]) * (Yn[0] - Yn[Ny]) +
                           (Zn[0] - Zn[Nz]) * (Zn[0] - Zn[Nz])) / 2 + (0.5 * C / f0);
     //const double r = 10;
-    printf("%.10f\n", r); // 0.000003
+    printf("%.10f¥n", r); // 0.000003
 
     Planewave.r0[0] = ((Xn[0] + Xn[Nx]) / 2 - (r * Planewave.ri[0]));
     Planewave.r0[1] = ((Yn[0] + Yn[Ny]) / 2 - (r * Planewave.ri[1]));
     Planewave.r0[2] = ((Zn[0] + Zn[Nz]) / 2 - (r * Planewave.ri[2]));
     Planewave.r0[2] = 0.0000005;
-    printf("initial position.\n");
-    printf("%.10f %.10f %.10f\n", Planewave.r0[0], Planewave.r0[1], Planewave.r0[2]);
+    printf("initial position.¥n");
+    printf("%.10f %.10f %.10f¥n", Planewave.r0[0], Planewave.r0[1], Planewave.r0[2]);
 
     // waveform parameter(ガウス微分パルス)
-    Planewave.ai = 4 / (1.27 / f0);
+    //Planewave.ai = 4 / (1.27 / f0);
+	Planewave.ai = 4 / (1.27e-4 / f0);
+	//set_pulse_parameters();
 }
 
 
@@ -387,7 +389,7 @@ void setup_point(const double *x, const double *y, const double *z, const char s
     }
 /*
     for (int n = 0; n < NPoint + 2; n++) {
-        printf("%d %c %d %d %d %f %f %f\n", n, Point[n].dir, Point[n].i, Point[n].j, Point[n].k, Point[n].dx, Point[n].dy, Point[n].dz);
+        printf("%d %c %d %d %d %f %f %f¥n", n, Point[n].dir, Point[n].i, Point[n].j, Point[n].k, Point[n].dx, Point[n].dy, Point[n].dz);
     }
 */
 }
@@ -412,7 +414,7 @@ void setup_load(int nload, char *dload, double *xload, double *yload, double *zl
                 Material = (material_t *)realloc(Material, (NMaterial + array_inc) * sizeof(material_t));
             }
             if (NMaterial >= MAXMATERIAL) {
-                fprintf(stderr, "*** too many load(R,C)\n");
+                fprintf(stderr, "*** too many load(R,C)¥n");
                 exit(1);
             }
             Material[NMaterial].type = 1;
@@ -420,7 +422,7 @@ void setup_load(int nload, char *dload, double *xload, double *yload, double *zl
             Material[NMaterial].esgm = (rcl == 'R') ? (1 / pload[n]) * dlds : 0;
             Material[NMaterial].amur = 1;
             Material[NMaterial].msgm = 0;
-            //printf("%zd %d %f %f %f %f\n", NMaterial, Material[NMaterial].type, Material[NMaterial].epsr, Material[NMaterial].esgm, Material[NMaterial].amur, Material[NMaterial].msgm);
+            //printf("%zd %d %f %f %f %f¥n", NMaterial, Material[NMaterial].type, Material[NMaterial].epsr, Material[NMaterial].esgm, Material[NMaterial].amur, Material[NMaterial].msgm);
             // geometry
             if (NGeometry % array_inc == 0) {
                 Geometry = (geometry_t *)realloc(Geometry, (NGeometry + array_inc) * sizeof(geometry_t));
@@ -465,7 +467,7 @@ void setup_load(int nload, char *dload, double *xload, double *yload, double *zl
             Inductor[NInductor].dy = dy;
             Inductor[NInductor].dz = dz;
             Inductor[NInductor].fctr = MU0 * dlds / pload[n];
-            //printf("%d %c %d %d %d %e\n", NInductor, Inductor[NInductor].dir, Inductor[NInductor].i, Inductor[NInductor].j, Inductor[NInductor].k, Inductor[NInductor].fctr);
+            //printf("%d %c %d %d %d %e¥n", NInductor, Inductor[NInductor].dir, Inductor[NInductor].i, Inductor[NInductor].j, Inductor[NInductor].k, Inductor[NInductor].fctr);
             Inductor[NInductor].e =
             Inductor[NInductor].esum = 0;
             NInductor++;
@@ -514,4 +516,3 @@ void setup_geomline3d(void)
     free(g);
     free(mgline);
 }
-

@@ -175,8 +175,8 @@ void solve(int io, double *tdft, FILE *fp)
             // monitor
             if (io) {
                 sprintf(str, "%7d %.6f %.6f", itime, fsum[0], fsum[1]);
-                fprintf(fp,     "%s\n", str);
-                fprintf(stdout, "%s\n", str);
+                fprintf(fp,     "%s¥n", str);
+                fprintf(stdout, "%s¥n", str);
                 fflush(fp);
                 fflush(stdout);
                 
@@ -191,7 +191,7 @@ void solve(int io, double *tdft, FILE *fp)
                 snprintf(group_name, sizeof(group_name), "/data%06d", itime);
                 group_id = H5Gcreate(file_id, group_name, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
                 //sprintf(str, "group_name : %s", group_name);
-                //fprintf(stdout, "%s\n", str);
+                //fprintf(stdout, "%s¥n", str);
 
                 // Eフィールドデータセットの作成と書き込み
                 hsize_t e_dims[4] = {1, NFreq2, NN, 6};
@@ -203,12 +203,12 @@ void solve(int io, double *tdft, FILE *fp)
                 memspace_id = H5Screate_simple(1, mem_dims, NULL);
 
                 //sprintf(str, "NFreq2 : %d", NFreq2);
-                //fprintf(stdout, "%s\n", str);
+                //fprintf(stdout, "%s¥n", str);
 
                 for (int ifreq = 0; ifreq < NFreq2; ifreq++) {
                     int64_t n0 = ifreq * NN;
                     for (int nn = 0; nn < NN; nn++) {
-                        //fprintf(stdout, "set e_value.\n");
+                        //fprintf(stdout, "set e_value.¥n");
 
                         double e_value[6] = {
                             cEx_r[n0 + nn], cEy_r[n0 + nn], cEz_r[n0 + nn],
@@ -217,17 +217,17 @@ void solve(int io, double *tdft, FILE *fp)
 
                         hsize_t e_offset[4] = {0, ifreq, nn, 0};
                         hsize_t e_count[4] = {1, 1, 1, 6};
-                        //fprintf(stdout, "H5Sselect_hyperslab.\n");
+                        //fprintf(stdout, "H5Sselect_hyperslab.¥n");
                         H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, e_offset, NULL, e_count, NULL);
 
                         // 書き込み
-                        //fprintf(stdout, "H5Dwrite.\n");
+                        //fprintf(stdout, "H5Dwrite.¥n");
                         // データ書き込み (MPI対応)
                         plist_id = H5Pcreate(H5P_DATASET_XFER);
                         H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_INDEPENDENT);  // H5FD_MPIO_COLLECTIVE または H5FD_MPIO_INDEPENDENT
                         status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, memspace_id, dataspace_id, plist_id, e_value);
                         if (status < 0) {
-                            fprintf(stderr, "Error writing E data at itime=%d, ifreq=%d, nn=%d\n", itime, ifreq, nn);
+                            fprintf(stderr, "Error writing E data at itime=%d, ifreq=%d, nn=%d¥n", itime, ifreq, nn);
                         }
                         H5Pclose(plist_id);
                     }
@@ -257,7 +257,7 @@ void solve(int io, double *tdft, FILE *fp)
                         H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_INDEPENDENT);  // または H5FD_MPIO_INDEPENDENT
                         status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, memspace_id, dataspace_id, plist_id, h_value);
                         if (status < 0) {
-                            fprintf(stderr, "Error writing H data at itime=%d, ifreq=%d, nn=%d\n", itime, ifreq, nn);
+                            fprintf(stderr, "Error writing H data at itime=%d, ifreq=%d, nn=%d¥n", itime, ifreq, nn);
                         }
                         H5Pclose(plist_id);
                     }
@@ -288,8 +288,8 @@ void solve(int io, double *tdft, FILE *fp)
     // result
     if (io) {
         sprintf(str, "    --- %s ---", (converged ? "converged" : "max steps"));
-        fprintf(fp,     "%s\n", str);
-        fprintf(stdout, "%s\n", str);
+        fprintf(fp,     "%s¥n", str);
+        fprintf(stdout, "%s¥n", str);
         fflush(fp);
         fflush(stdout);
     }
@@ -310,7 +310,7 @@ void solve(int io, double *tdft, FILE *fp)
         hid_t metadata_group_id = H5Gcreate(file_id, "/metadata", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 
         //sprintf(str, "group_name : %s", group_name);
-        fprintf(stdout, "meta1.\n");
+        fprintf(stdout, "meta1.¥n");
 
         // 時間に関するメタデータの書き込み
         double time_metadata[1] = {Solver.maxiter * Dt};
@@ -343,7 +343,7 @@ void solve(int io, double *tdft, FILE *fp)
         //H5Sclose(dataspace_id);
 
         // Title
-        fprintf(stdout, "meta2.\n");
+        fprintf(stdout, "meta2.¥n");
         hsize_t title_dims[1] = {256};
         dataspace_id = H5Screate_simple(1, title_dims, NULL);
         dataset_id = H5Dcreate(metadata_group_id, "Title", H5T_NATIVE_CHAR, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -355,7 +355,7 @@ void solve(int io, double *tdft, FILE *fp)
         H5Dclose(dataset_id);
         H5Sclose(dataspace_id);
 
-        fprintf(stdout, "meta3.\n");
+        fprintf(stdout, "meta3.¥n");
         // 各種整数型メタデータの書き込み
         struct {
             const char *name;
@@ -394,7 +394,7 @@ void solve(int io, double *tdft, FILE *fp)
             H5Sclose(dataspace_id);
         }
 
-        fprintf(stdout, "meta4.\n");
+        fprintf(stdout, "meta4.¥n");
         // Dtの書き込み
         dataspace_id = H5Screate(H5S_SCALAR);
         dataset_id = H5Dcreate(metadata_group_id, "Dt", H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -405,7 +405,7 @@ void solve(int io, double *tdft, FILE *fp)
         H5Dclose(dataset_id);
         H5Sclose(dataspace_id);
 
-        fprintf(stdout, "meta5.\n");
+        fprintf(stdout, "meta5.¥n");
         // Planewaveの書き込み
         dataspace_id = H5Screate(H5S_SCALAR);
         dataset_id = H5Dcreate(metadata_group_id, "Planewave", H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -417,7 +417,7 @@ void solve(int io, double *tdft, FILE *fp)
         H5Dclose(dataset_id);
         H5Sclose(dataspace_id);
 
-        fprintf(stdout, "meta6.\n");
+        fprintf(stdout, "meta6.¥n");
         // 配列データの書き込み
         struct {
             const char *name;
@@ -441,7 +441,7 @@ void solve(int io, double *tdft, FILE *fp)
         };
 
         for (int i = 0; i < sizeof(arrays) / sizeof(arrays[0]); i++) {
-            fprintf(stdout, "meta6 1(%d)(%s).\n", i, arrays[i].name);
+            fprintf(stdout, "meta6 1(%d)(%s).¥n", i, arrays[i].name);
             hsize_t array_dims[1] = {arrays[i].size};
             dataspace_id = H5Screate_simple(1, array_dims, NULL);
             dataset_id = H5Dcreate(metadata_group_id, arrays[i].name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -455,7 +455,7 @@ void solve(int io, double *tdft, FILE *fp)
             H5Sclose(dataspace_id);
         }
         
-        fprintf(stdout, "meta7.\n");
+        fprintf(stdout, "meta7.¥n");
         // Surfaceデータの書き込み
         dataspace_id = H5Screate(H5S_SCALAR);
         dataset_id = H5Dcreate(metadata_group_id, "NSurface", H5T_NATIVE_INT, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -468,7 +468,7 @@ void solve(int io, double *tdft, FILE *fp)
         H5Dclose(dataset_id);
         H5Sclose(dataspace_id);
 
-        fprintf(stdout, "meta8.\n");
+        fprintf(stdout, "meta8.¥n");
 	    // surface_t構造体に対応する複合データ型を定義
 	    hid_t memtype = H5Tcreate(H5T_COMPOUND, sizeof(surface_t));
 	    H5Tinsert(memtype, "nx", HOFFSET(surface_t, nx), H5T_NATIVE_DOUBLE);
@@ -491,11 +491,11 @@ void solve(int io, double *tdft, FILE *fp)
         H5Dclose(dataset_id);
         H5Sclose(dataspace_id);
 
-        fprintf(stdout, "meta9.\n");
+        fprintf(stdout, "meta9.¥n");
         // メタデータグループのクローズ
         H5Gclose(metadata_group_id);
         
-        fprintf(stdout, "meta10.\n");
+        fprintf(stdout, "meta10.¥n");
     }
 
     // グループ作成後の同期
@@ -504,13 +504,13 @@ void solve(int io, double *tdft, FILE *fp)
     // キャッシュをフラッシュする
     status = H5Fflush(file_id, H5F_SCOPE_GLOBAL);
     if (status < 0) {
-        fprintf(stderr, "Error H5Fflush\n");
+        fprintf(stderr, "Error H5Fflush¥n");
     }
 
     //MPI 用に対応しているため
     status = H5Fclose(file_id);
     if (status < 0) {
-        fprintf(stderr, "Error H5Fclose\n");
+        fprintf(stderr, "Error H5Fclose¥n");
     }
 
     // free
@@ -546,7 +546,7 @@ void solve(int io, double *tdft, FILE *fp)
 static void setup_cuda_mpi()
 {
     size_t size;
-    //printf("%d %d %d %d %d %d %d %d\n", commSize, commRank, bid.numhy_x, bid.numhz_x, bid.numhz_y, bid.numhx_y, bid.numhx_z, bid.numhy_z); fflush(stdout);
+    //printf("%d %d %d %d %d %d %d %d¥n", commSize, commRank, bid.numhy_x, bid.numhz_x, bid.numhz_y, bid.numhx_y, bid.numhx_z, bid.numhy_z); fflush(stdout);
 
     // X boundary
     size = Bid.numhy_x * sizeof(real_t);
@@ -595,4 +595,3 @@ static void copy_to_host()
         cuda_memcpy(GPU, VPoint, d_VPoint, Point_size, cudaMemcpyDeviceToHost);
     }
 }
-

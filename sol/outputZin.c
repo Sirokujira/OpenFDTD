@@ -108,14 +108,14 @@ static void write_input_impedance_data_to_hdf5()
     // HDF5 ファイルを開く
     file_id = H5Fopen(FILE_NAME, H5F_ACC_RDWR, H5P_DEFAULT);
     if (file_id < 0) {
-        fprintf(stderr, "Error opening file: %s\n", FILE_NAME);
+        fprintf(stderr, "Error opening file: %s¥n", FILE_NAME);
         return;
     }
 
     // グループを開く
     group_id = H5Gopen(file_id, GROUP_NAME, H5P_DEFAULT);
     if (group_id < 0) {
-        fprintf(stderr, "Error opening group: %s\n", GROUP_NAME);
+        fprintf(stderr, "Error opening group: %s¥n", GROUP_NAME);
         H5Fclose(file_id);
         return;
     }
@@ -137,7 +137,7 @@ static void write_input_impedance_data_to_hdf5()
     // データセットを作成
     dataset_id = H5Dcreate(group_id, ZIN_DATASET_NAME, memtype_id, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     if (dataset_id < 0) {
-        fprintf(stderr, "Error creating dataset: %s\n", ZIN_DATASET_NAME);
+        fprintf(stderr, "Error creating dataset: %s¥n", ZIN_DATASET_NAME);
         H5Sclose(dataspace_id);
         H5Tclose(memtype_id);
         H5Gclose(group_id);
@@ -148,7 +148,7 @@ static void write_input_impedance_data_to_hdf5()
     // input impedance データを書き込み
     status = H5Dwrite(dataset_id, memtype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, data);
     if (status < 0) {
-        fprintf(stderr, "Error writing dataset: %s\n", ZIN_DATASET_NAME);
+        fprintf(stderr, "Error writing dataset: %s¥n", ZIN_DATASET_NAME);
     }
 
     // リソースを解放
@@ -161,17 +161,17 @@ static void write_input_impedance_data_to_hdf5()
 
 static void _outputZin(FILE *fp)
 {
-	fprintf(fp, "=== input impedance ===\n");
+	fprintf(fp, "=== input impedance ===¥n");
 
 	for (int ifeed = 0; ifeed < NFeed; ifeed++) {
-		fprintf(fp, "feed #%d (Z0[ohm] = %.2f)\n", ifeed + 1, Feed[ifeed].z0);
-		fprintf(fp, "  %s\n", "frequency[Hz] Rin[ohm]   Xin[ohm]    Gin[mS]    Bin[mS]    Ref[dB]       VSWR");
+		fprintf(fp, "feed #%d (Z0[ohm] = %.2f)¥n", ifeed + 1, Feed[ifeed].z0);
+		fprintf(fp, "  %s¥n", "frequency[Hz] Rin[ohm]   Xin[ohm]    Gin[mS]    Bin[mS]    Ref[dB]       VSWR");
 		for (int ifreq = 0; ifreq < NFreq1; ifreq++) {
 			const int id = (ifeed * NFreq1) + ifreq;
 			const d_complex_t yin = d_inv(Zin[id]);
 			const double gamma = pow(10, Ref[id] / 20);
 			const double vswr = (fabs(1 - gamma) > EPS) ? (1 + gamma) / (1 - gamma) : 1000;
-			fprintf(fp, "%13.5e%11.3f%11.3f%11.3f%11.3f%11.3f%11.3f\n",
+			fprintf(fp, "%13.5e%11.3f%11.3f%11.3f%11.3f%11.3f%11.3f¥n",
 				Freq1[ifreq], Zin[id].r, Zin[id].i, yin.r * 1e3, yin.i * 1e3, Ref[id], vswr);
 		}
 	}
@@ -187,4 +187,3 @@ void outputZin(FILE *fp)
 	
 	write_input_impedance_data_to_hdf5();
 }
-
