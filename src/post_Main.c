@@ -30,6 +30,7 @@ int main(int argc, char *argv[])
 	omp_set_num_threads(nthread);
 #endif
 
+	/*
 	// input data
 	if ((fp_in = fopen(fn_in, "r")) == NULL) {
 		printf(errfmt, fn_in);
@@ -50,9 +51,13 @@ int main(int argc, char *argv[])
 	}
 	readout(fp_out);
 	fclose(fp_out);
+	*/
+	readhdf5();
 
 	// post process
-	post();
+	//post();
+
+	read_metadata_from_hdf5();
 
 	// prompt
 	if (prompt) getchar();

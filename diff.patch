@@ -1,0 +1,107 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d9c0829..a89e4f6 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -221,9 +221,7 @@ if (WITH_CUDA)
+             target_link_libraries(ofd_cuda_libmpi PRIVATE ${CUDA_LIBRARIES})
+             #target_link_libraries(ofd_cuda_libmpi PRIVATE OpenMP::OpenMP_C pthread m)
+             target_link_libraries(ofd_cuda_libmpi PRIVATE OpenMP::OpenMP_C Threads::Threads m)
+-            target_link_libraries(ofd_cuda_libmpi PRIVATE MPI::MPI_C hdf5::hdf5)
+-            #error
+-            #target_link_libraries(ofd_cuda_libmpi PRIVATE MPI::MPI_C hdf5::hdf5-shared)
++            target_link_libraries(ofd_cuda_libmpi PRIVATE MPI::MPI_C HDF5::HDF5)
+ 
+             #add_executable(ofd_cuda_mpi ${SOURCES2} ${MPI_SOURCES2} ${CUDA_MPI_SOURCES} ${CUDA_SOURCES2} src/cuda_mpi_Main.cu)
+             add_executable(ofd_cuda_mpi src/cuda_mpi_Main.cu)
+@@ -237,7 +235,7 @@ if (WITH_CUDA)
+             target_link_libraries(ofd_cuda_mpi PRIVATE ${CUDA_LIBRARIES})
+             #target_link_libraries(ofd_cuda_mpi PRIVATE OpenMP::OpenMP_C pthread m)
+             target_link_libraries(ofd_cuda_mpi PRIVATE OpenMP::OpenMP_C Threads::Threads m)
+-            target_link_libraries(ofd_cuda_mpi PRIVATE MPI::MPI_C hdf5::hdf5)
++            target_link_libraries(ofd_cuda_mpi PRIVATE MPI::MPI_C HDF5::HDF5)
+         else ()
+             # Add CUDA source files
+             file(GLOB CUDA_SOURCES "cuda/*.cu")
+@@ -298,11 +296,11 @@ if (WITH_CUDA)
+             if(OpenMP_C_FOUND)
+                 message(STATUS "OpenMP FOUND.")
+                 #target_link_libraries(ofd_cuda PRIVATE OpenMP::OpenMP_C)
+-                target_link_libraries(ofd_cuda PRIVATE OpenMP::OpenMP_C Threads::Threads hdf5::hdf5 m)
++                target_link_libraries(ofd_cuda PRIVATE OpenMP::OpenMP_C Threads::Threads HDF5::HDF5 m)
+             else()
+                 message(STATUS "OpenMP not FOUND.")
+                 #target_link_libraries(ofd_cuda PUBLIC m)
+-                target_link_libraries(ofd_cuda PRIVATE Threads::Threads hdf5::hdf5 m)
++                target_link_libraries(ofd_cuda PRIVATE Threads::Threads HDF5::HDF5 m)
+             endif()
+ 
+         endif()
+@@ -396,7 +394,7 @@ else()
+ 
+         #target_link_libraries(ofd_mpi PRIVATE MPI::MPI_C OpenMP::OpenMP_C m)
+         target_link_libraries(ofd_mpi PRIVATE OpenMP::OpenMP_C Threads::Threads m)
+-        target_link_libraries(ofd_mpi PRIVATE MPI::MPI_C hdf5::hdf5)
++        target_link_libraries(ofd_mpi PRIVATE MPI::MPI_C HDF5::HDF5)
+     else ()
+         add_executable(ofd ${SOURCES} src/sol_Main.c)
+         #target_link_libraries(ofd glfw)
+@@ -409,11 +407,11 @@ else()
+         # Link OpenMP libraries to the target
+         if(OpenMP_C_FOUND)
+             #target_link_libraries(ofd PRIVATE OpenMP::OpenMP_C m)
+-            target_link_libraries(ofd PRIVATE OpenMP::OpenMP_C m hdf5::hdf5)
++            target_link_libraries(ofd PRIVATE OpenMP::OpenMP_C m HDF5::HDF5)
+             #target_link_libraries(ofd PRIVATE OpenMP::OpenMP_CXX m)
+         else()
+             #target_link_libraries(ofd PRIVATE m)
+-            target_link_libraries(ofd PRIVATE m hdf5::hdf5)
++            target_link_libraries(ofd PRIVATE m HDF5::HDF5)
+         endif()
+ 
+         # ターゲットのオブジェクトディレクトリを設定
+@@ -440,7 +438,7 @@ if (WITH_POST)
+     target_include_directories(ofd_post PUBLIC "${PROJECT_SOURCE_DIR}/include")
+ 
+     #target_link_libraries(ofd_post PRIVATE OpenMP::OpenMP_C m)
+-    target_link_libraries(ofd_post PRIVATE OpenMP::OpenMP_C m hdf5::hdf5)
++    target_link_libraries(ofd_post PRIVATE OpenMP::OpenMP_C m HDF5::HDF5)
+ 
+ endif()
+ 
+@@ -462,7 +460,7 @@ endif()
+ #      # Include directories for header files
+ #      target_include_directories(ofd_to_silo PUBLIC "${PROJECT_SOURCE_DIR}/include" ${Silo_INCLUDE_DIRS})
+ #
+-#      target_link_libraries(ofd_to_silo PRIVATE OpenMP::OpenMP_C hdf5::hdf5 ${Silo_LIBRARIES} m)
++#      target_link_libraries(ofd_to_silo PRIVATE OpenMP::OpenMP_C HDF5::HDF5 ${Silo_LIBRARIES} m)
+ #    else()
+ #      message(FATAL_ERROR "Silo library not found")
+ #    endif()
+diff --git a/src/post_Main.c b/src/post_Main.c
+index ea5775e..396ac97 100644
+--- a/src/post_Main.c
++++ b/src/post_Main.c
+@@ -30,6 +30,7 @@ int main(int argc, char *argv[])
+ 	omp_set_num_threads(nthread);
+ #endif
+ 
++	/*
+ 	// input data
+ 	if ((fp_in = fopen(fn_in, "r")) == NULL) {
+ 		printf(errfmt, fn_in);
+@@ -50,9 +51,13 @@ int main(int argc, char *argv[])
+ 	}
+ 	readout(fp_out);
+ 	fclose(fp_out);
++	*/
++	readhdf5();
+ 
+ 	// post process
+-	post();
++	//post();
++
++	read_metadata_from_hdf5();
+ 
+ 	// prompt
+ 	if (prompt) getchar();
+
