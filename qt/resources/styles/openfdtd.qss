@@ -1,0 +1,93 @@
+/* openfdtd.qss — Qt Fusion "classic" look matching the HTML mock
+ * (project/styles.css の Classic スタイル相当)。 */
+
+QMainWindow, QDialog {
+    background: #f0f0f0;
+}
+
+QMenuBar {
+    background: #f0f0f0;
+    border-bottom: 1px solid #d4d4d4;
+}
+QMenuBar::item:selected {
+    background: #dceafa;
+}
+
+QToolBar {
+    background: #f7f7f7;
+    border-bottom: 1px solid #d4d4d4;
+    spacing: 2px;
+    padding: 2px 4px;
+}
+
+#DomainBar {
+    background: #3b4252;
+}
+#DomainBar QToolButton {
+    color: #d8dee9;
+}
+#DomainBar QToolButton:checked {
+    color: #1a1a1a;
+}
+
+QTabWidget::pane {
+    border: 1px solid #c8c8c8;
+    background: #fafafa;
+}
+QTabBar::tab {
+    padding: 4px 10px;
+    border: 1px solid #c8c8c8;
+    border-bottom: none;
+    background: #e8e8e8;
+    margin-right: -1px;
+}
+QTabBar::tab:selected {
+    background: #fafafa;
+    font-weight: 600;
+}
+
+QGroupBox#SectionBox {
+    background: #ffffff;
+    border: 1px solid #c4cdd6;
+    border-radius: 2px;
+    margin-top: 10px;
+    padding-top: 8px;
+    font-weight: 600;
+}
+QGroupBox#SectionBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 8px;
+    padding: 0 6px;
+    color: #003c73;
+}
+
+QTableWidget {
+    gridline-color: #dcdcdc;
+    background: #ffffff;
+    alternate-background-color: #f6f9fc;
+}
+QHeaderView::section {
+    background: #eef1f5;
+    border: 1px solid #d4d4d4;
+    padding: 3px 6px;
+}
+
+QStatusBar {
+    background: #eef1f5;
+    border-top: 1px solid #d4d4d4;
+}
+QStatusBar QLabel {
+    padding: 0 8px;
+    border-right: 1px solid #d8d8d8;
+}
+
+#LogConsole {
+    background: #16191f;
+    color: #cdd6e0;
+    border: 1px solid #2a2f3a;
+}
+
+QPushButton {
+    padding: 3px 12px;
+}

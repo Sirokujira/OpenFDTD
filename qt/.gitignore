@@ -1,0 +1,11 @@
+# CMake build trees
+build/
+build-*/
+cmake-build-*/
+
+# Qt / moc artifacts (if any leak outside build/)
+*_autogen/
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+*.user
