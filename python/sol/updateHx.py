@@ -46,7 +46,7 @@ def _Hx_f_vector(
             for k in range(kMin, kMax + 0):
                 n = (Ni * i) + (Nj * j) + (Nk * k) + N0
                 Hx[n] = K1Hx[n] * Hx[n] \
-                      - K1Hx[n] * (RYc[j] * (Ez[n + Nj] - Ez[n])
+                      - K2Hx[n] * (RYc[j] * (Ez[n + Nj] - Ez[n])
                                  - RZc[k] * (Ey[n + Nk] - Ey[n]))
 
 @jit(cache=True, nogil=True, parallel=True, nopython=True)
