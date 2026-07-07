@@ -146,7 +146,7 @@ void readhdf5() {
     SurfaceHz = (d_complex_t **)malloc(size);
 
 	//plot2d?
-    size = NN * NFreq2 * sizeof(float *);
+    size = NN * NFreq2 * sizeof(float);
     cEx_r = (float *)malloc(size);
     cEx_i = (float *)malloc(size);
     cEy_r = (float *)malloc(size);
@@ -176,11 +176,13 @@ void readhdf5() {
     H5Tinsert(memtype, "ds", HOFFSET(surface_t, ds), H5T_NATIVE_DOUBLE);
 
 	//surface_t
-    //Surface = (double *)malloc(sizeof(double) * NSurface);
+    if (Surface == NULL) {
+        Surface = (surface_t *)malloc(NSurface * sizeof(surface_t));
+    }
     dataset_id = H5Dopen(metadata_group_id, "Surface", H5P_DEFAULT);
     status = H5Dread(dataset_id, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, Surface);
     if (status < 0) {
-        fprintf(stderr, "Error reading dataset: %s¥n", Surface);
+        fprintf(stderr, "Error reading dataset: Surface\n");
     }
     H5Dclose(dataset_id);
     H5Tclose(memtype);
@@ -201,7 +203,7 @@ void readhdf5() {
     dataset_id = H5Dopen(metadata_group_id, COUPLING_DATASET_NAME, H5P_DEFAULT);
     status = H5Dread(dataset_id, datatype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, coupling_data);
     if (status < 0) {
-        fprintf(stderr, "Error reading dataset: %s¥n", COUPLING_DATASET_NAME);
+        fprintf(stderr, "Error reading dataset: %s\n", COUPLING_DATASET_NAME);
     }
     //coupling_data から
     H5Dclose(dataset_id);
@@ -218,16 +220,18 @@ void readhdf5() {
     dataset_id = H5Dopen(metadata_group_id, SPARA_DATASET_NAME, H5P_DEFAULT);
     status = H5Dread(dataset_id, datatype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, spara_data);
     if (status < 0) {
-        fprintf(stderr, "Error reading dataset: %s¥n", SPARA_DATASET_NAME);
+        fprintf(stderr, "Error reading dataset: %s\n", SPARA_DATASET_NAME);
     }
-    // spara_data から Spara への加工]
-    //Spara  =    (d_complex_t *)malloc(sizeof(d_complex_t) * NPoint * NFreq1);
+    // spara_data から Spara へ復元 (dB/deg → 複素数)
+    if (Spara == NULL) {
+        Spara = (d_complex_t *)malloc(sizeof(d_complex_t) * NPoint * NFreq1);
+    }
     for (int ifreq = 0; ifreq < NFreq1; ifreq++) {
         for (int ipoint = 0; ipoint < NPoint; ipoint++) {
             const int id = (ipoint * NFreq1) + ifreq;
-            //Spara[id] = d_polar(pow(10, spara_data[ifreq][ipoint].magnitude_dB / 20), spara_data[ifreq][ipoint].phase_deg * (M_PI / 180.0));
-            Spara[id].r = spara_data[ifreq][ipoint].magnitude_dB;
-            Spara[id].i = spara_data[ifreq][ipoint].phase_deg;
+            const double mag = pow(10, spara_data[ifreq][ipoint].magnitude_dB / 20);
+            const double ph  = spara_data[ifreq][ipoint].phase_deg * (M_PI / 180.0);
+            Spara[id] = d_complex(mag * cos(ph), mag * sin(ph));
         }
     }
     H5Dclose(dataset_id);
@@ -246,7 +250,7 @@ void readhdf5() {
     dataset_id = H5Dopen(metadata_group_id, CROSS_SECTION_DATASET_NAME, H5P_DEFAULT);
     status = H5Dread(dataset_id, datatype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, cross_section_data);
     if (status < 0) {
-        fprintf(stderr, "Error reading dataset: %s¥n", CROSS_SECTION_DATASET_NAME);
+        fprintf(stderr, "Error reading dataset: %s\n", CROSS_SECTION_DATASET_NAME);
     }
     cross_section_data から 
     H5Dclose(dataset_id);
@@ -254,7 +258,7 @@ void readhdf5() {
 */
 
     // input_impedance データの読み込み
-    fprintf(stdout, "input_impedance_data (start)¥n");
+    fprintf(stdout, "input_impedance_data (start)\n");
     input_impedance_data_t input_impedance_data[NFeed][NFreq1];
     
     hid_t memtype_id;
@@ -272,7 +276,7 @@ void readhdf5() {
     dataset_id = H5Dopen(metadata_group_id, ZIN_DATASET_NAME, H5P_DEFAULT);
     status = H5Dread(dataset_id, memtype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, input_impedance_data);
     if (status < 0) {
-        fprintf(stderr, "Error reading dataset: %s¥n", ZIN_DATASET_NAME);
+        fprintf(stderr, "Error reading dataset: %s\n", ZIN_DATASET_NAME);
     }
     //input_impedance_data から Zin への加工
     //Zin = (d_complex_t *)malloc(sizeof(d_complex_t) * NFeed * NFreq1);
@@ -285,7 +289,7 @@ void readhdf5() {
             Ref[id] = input_impedance_data[ifeed][ifreq].ref;
         }
     }
-    fprintf(stdout, "input_impedance_data (end)¥n");
+    fprintf(stdout, "input_impedance_data (end)\n");
     H5Dclose(dataset_id);
     H5Tclose(memtype_id);
 

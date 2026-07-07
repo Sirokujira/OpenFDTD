@@ -15,10 +15,10 @@ typedef struct {
 
 static void _outputCross(FILE *fp, const double bcs[], const double fcs[])
 {
-    fprintf(fp, "=== cross section ===¥n");
-    fprintf(fp, "  %s¥n", "frequency[Hz] backward[m*m]  forward[m*m]");
+    fprintf(fp, "=== cross section ===\n");
+    fprintf(fp, "  %s\n", "frequency[Hz] backward[m*m]  forward[m*m]");
     for (int ifreq = 0; ifreq < NFreq2; ifreq++) {
-        fprintf(fp, "  %13.5e  %12.4e  %12.4e¥n", Freq2[ifreq], bcs[ifreq], fcs[ifreq]);
+        fprintf(fp, "  %13.5e  %12.4e  %12.4e\n", Freq2[ifreq], bcs[ifreq], fcs[ifreq]);
     }
 }
 
@@ -40,14 +40,14 @@ void write_cross_section_data_to_hdf5(const double bcs[], const double fcs[])
     // HDF5 ファイルを開く
     file_id = H5Fopen(FILE_NAME, H5F_ACC_RDWR, H5P_DEFAULT);
     if (file_id < 0) {
-        fprintf(stderr, "Error opening file: %s¥n", FILE_NAME);
+        fprintf(stderr, "Error opening file: %s\n", FILE_NAME);
         return;
     }
 
     // グループを開く
     group_id = H5Gopen(file_id, GROUP_NAME, H5P_DEFAULT);
     if (group_id < 0) {
-        fprintf(stderr, "Error opening group: %s¥n", GROUP_NAME);
+        fprintf(stderr, "Error opening group: %s\n", GROUP_NAME);
         H5Fclose(file_id);
         return;
     }
@@ -65,7 +65,7 @@ void write_cross_section_data_to_hdf5(const double bcs[], const double fcs[])
     // データセットを作成
     dataset_id = H5Dcreate(group_id, CROSS_SECTION_DATASET_NAME, datatype_id, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     if (dataset_id < 0) {
-        fprintf(stderr, "Error creating dataset: %s¥n", CROSS_SECTION_DATASET_NAME);
+        fprintf(stderr, "Error creating dataset: %s\n", CROSS_SECTION_DATASET_NAME);
         H5Tclose(datatype_id);
         H5Sclose(dataspace_id);
         H5Gclose(group_id);
@@ -76,7 +76,7 @@ void write_cross_section_data_to_hdf5(const double bcs[], const double fcs[])
     // cross section データを書き込み
     status = H5Dwrite(dataset_id, datatype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, data);
     if (status < 0) {
-        fprintf(stderr, "Error writing dataset: %s¥n", CROSS_SECTION_DATASET_NAME);
+        fprintf(stderr, "Error writing dataset: %s\n", CROSS_SECTION_DATASET_NAME);
     }
 
     // リソースを解放

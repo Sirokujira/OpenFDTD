@@ -30,7 +30,6 @@ int main(int argc, char *argv[])
 	omp_set_num_threads(nthread);
 #endif
 
-	/*
 	// input data
 	if ((fp_in = fopen(fn_in, "r")) == NULL) {
 		printf(errfmt, fn_in);
@@ -51,11 +50,13 @@ int main(int argc, char *argv[])
 	}
 	readout(fp_out);
 	fclose(fp_out);
-	*/
-	readhdf5();   // /metadata の読み込みを含む
+
+	// NOTE: HDF5 (/metadata) からの読み込みは readhdf5() で可能だが、
+	// coupling/cross_section の展開が未実装のため、正本は従来どおり
+	// ofd.out (readout) とする。HDF5 移行が完了したら切り替える。
 
 	// post process
-	//post();
+	post();
 
 	// prompt
 	if (prompt) getchar();

@@ -48,14 +48,14 @@ void write_coupling_data_to_hdf5()
     // HDF5 ファイルを開く
     file_id = H5Fopen(FILE_NAME, H5F_ACC_RDWR, H5P_DEFAULT);
     if (file_id < 0) {
-        fprintf(stderr, "Error opening file: %s¥n", FILE_NAME);
+        fprintf(stderr, "Error opening file: %s\n", FILE_NAME);
         return;
     }
 
     // グループを開く
     group_id = H5Gopen(file_id, GROUP_NAME, H5P_DEFAULT);
     if (group_id < 0) {
-        fprintf(stderr, "Error opening group: %s¥n", GROUP_NAME);
+        fprintf(stderr, "Error opening group: %s\n", GROUP_NAME);
         H5Fclose(file_id);
         return;
     }
@@ -72,7 +72,7 @@ void write_coupling_data_to_hdf5()
     // データセットを作成
     dataset_id = H5Dcreate(group_id, COUPLING_DATASET_NAME, datatype_id, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     if (dataset_id < 0) {
-        fprintf(stderr, "Error creating dataset: %s¥n", COUPLING_DATASET_NAME);
+        fprintf(stderr, "Error creating dataset: %s\n", COUPLING_DATASET_NAME);
         H5Sclose(dataspace_id);
         H5Gclose(group_id);
         H5Fclose(file_id);
@@ -82,7 +82,7 @@ void write_coupling_data_to_hdf5()
     // coupling データを書き込み
     status = H5Dwrite(dataset_id, datatype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, data);
     if (status < 0) {
-        fprintf(stderr, "Error writing dataset: %s¥n", COUPLING_DATASET_NAME);
+        fprintf(stderr, "Error writing dataset: %s\n", COUPLING_DATASET_NAME);
     }
 
     // リソースを解放
@@ -97,7 +97,7 @@ static void _outputCoupling(FILE *fp)
 {
 	char str[BUFSIZ];
 
-	fprintf(fp, "=== coupling ===¥n");
+	fprintf(fp, "=== coupling ===\n");
 
 	fprintf(fp, "  frequency[Hz]");
 	for (int ifeed = 0; ifeed < NFeed; ifeed++) {
@@ -106,7 +106,7 @@ static void _outputCoupling(FILE *fp)
 			fprintf(fp, "  %s[dB] %s[deg]", str, str);
 		}
 	}
-	fprintf(fp, "¥n");
+	fprintf(fp, "\n");
 
 	for (int ifreq = 0; ifreq < NFreq1; ifreq++) {
 		fprintf(fp, "  %13.5e", Freq1[ifreq]);
@@ -117,7 +117,7 @@ static void _outputCoupling(FILE *fp)
 				fprintf(fp, "%9.3f", d_deg(couple));
 			}
 		}
-		fprintf(fp, "¥n");
+		fprintf(fp, "\n");
 	}
 
 	fflush(fp);

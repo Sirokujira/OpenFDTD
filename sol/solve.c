@@ -12,17 +12,20 @@
 // 温度更新関数
 void updateTemperature(double *T, int NN, int NFreq2, double alpha, double Dt, double *P_loss, double Dx, double Dy, double Dz) {
     for (int ifreq = 0; ifreq < NFreq2; ifreq++) {
-        int base_idx = ifreq * NN;
-        for (int i = 1; i < NN - 1; i++) {
-            // ここでは1次元の温度配列として仮定しているが、実際には対応するインデックスに基づく隣接要素の計算が必要
-            // 例としてDx, Dy, Dzを考慮して隣接要素間の温度勾配を計算
-            int idx = base_idx + i;
-            double d2Tdx2 = (T[idx + 1] - 2.0 * T[idx] + T[idx - 1]) / (Dx * Dx);
-            double d2Tdy2 = (T[idx + 1] - 2.0 * T[idx] + T[idx - 1]) / (Dy * Dy);
-            double d2Tdz2 = (T[idx + 1] - 2.0 * T[idx] + T[idx - 1]) / (Dz * Dz);
-            
+        const int64_t base_idx = (int64_t)ifreq * NN;
+        // NA マクロで 3 次元格子の隣接セルを参照する (内点のみ更新、境界は固定境界)
+        for (int i = 1; i < Nx - 1; i++) {
+        for (int j = 1; j < Ny - 1; j++) {
+        for (int k = 1; k < Nz - 1; k++) {
+            const int64_t idx = base_idx + NA(i, j, k);
+            const double d2Tdx2 = (T[base_idx + NA(i + 1, j, k)] - 2.0 * T[idx] + T[base_idx + NA(i - 1, j, k)]) / (Dx * Dx);
+            const double d2Tdy2 = (T[base_idx + NA(i, j + 1, k)] - 2.0 * T[idx] + T[base_idx + NA(i, j - 1, k)]) / (Dy * Dy);
+            const double d2Tdz2 = (T[base_idx + NA(i, j, k + 1)] - 2.0 * T[idx] + T[base_idx + NA(i, j, k - 1)]) / (Dz * Dz);
+
             // 温度の更新
             T[idx] += alpha * Dt * (d2Tdx2 + d2Tdy2 + d2Tdz2) + Dt * P_loss[idx];
+        }
+        }
         }
     }
 }
@@ -57,7 +60,7 @@ void calculatePowerLoss(double *P_loss, int NN, int NFreq2, double sigma, double
 // 導電率の取得関数
 double get_conductivity(int material_id) {
     if (material_id < 0 || material_id >= NMaterial) {
-        fprintf(stderr, "Invalid material ID: %d¥n", material_id);
+        fprintf(stderr, "Invalid material ID: %d\n", material_id);
         return -1.0;
     }
     return Material[material_id].esgm;  // E-σ（導電率）を返す
@@ -66,7 +69,7 @@ double get_conductivity(int material_id) {
 // 比誘電率の取得関数
 double get_relative_permittivity(int material_id) {
     if (material_id < 0 || material_id >= NMaterial) {
-        fprintf(stderr, "Invalid material ID: %d¥n", material_id);
+        fprintf(stderr, "Invalid material ID: %d\n", material_id);
         return -1.0;
     }
     return Material[material_id].epsr;  // ε-r（比誘電率）を返す
@@ -75,7 +78,7 @@ double get_relative_permittivity(int material_id) {
 // 比透磁率の取得関数
 double get_relative_permeability(int material_id) {
     if (material_id < 0 || material_id >= NMaterial) {
-        fprintf(stderr, "Invalid material ID: %d¥n", material_id);
+        fprintf(stderr, "Invalid material ID: %d\n", material_id);
         return -1.0;
     }
     return Material[material_id].amur;  // μ-r（比透磁率）を返す
@@ -86,7 +89,7 @@ void solve(int io, double *tdft, FILE *fp) {
         // 関数から?(fp の入替え?)
     hid_t file_id;
         // local
-        hid_t group_id, dataset_id, dataspace_id, memspace_id;
+        hid_t group_id, dataset_id, dataspace_id, memspace_id = -1;
     herr_t status;
 
     double fmax[] = {0, 0};
@@ -106,15 +109,19 @@ void solve(int io, double *tdft, FILE *fp) {
     //NN
     double *T = (double *)malloc(NFreq2 * NN * sizeof(double));
     double *P_losses = (double *)malloc(NFreq2 * NN * sizeof(double));
+    if ((T == NULL) || (P_losses == NULL)) {
+        fprintf(stderr, "*** temperature array malloc error (NFreq2=%d NN=%zu)\n", NFreq2, (size_t)NN);
+        exit(1);
+    }
     memset(T, 0, NFreq2 * NN * sizeof(double));
     memset(P_losses, 0, NFreq2 * NN * sizeof(double));
 
     // セルの幅（空間ステップ）を計算
-    double Dx = Xn[Nx] - Xn[0] / Nx;
-    double Dy = Yn[Ny] - Yn[0] / Ny;
-    double Dz = Zn[Nz] - Zn[0] / Nz;
+    double Dx = (Xn[Nx] - Xn[0]) / Nx;
+    double Dy = (Yn[Ny] - Yn[0]) / Ny;
+    double Dz = (Zn[Nz] - Zn[0]) / Nz;
     sprintf(str, "%.6f %.6f %.6f", Dx, Dy, Dz);
-    fprintf(stdout, "%s¥n", str);
+    fprintf(stdout, "%s\n", str);
 
     // 初期温度設定
     for (int i = 0; i < NFreq2 * NN; i++) {
@@ -234,8 +241,8 @@ void solve(int io, double *tdft, FILE *fp) {
             // monitor
             if (io) {
                 sprintf(str, "%7d %.6f %.6f", itime, fsum[0], fsum[1]);
-                fprintf(fp,     "%s¥n", str);
-                fprintf(stdout, "%s¥n", str);
+                fprintf(fp,     "%s\n", str);
+                fprintf(stdout, "%s\n", str);
                 fflush(fp);
                 fflush(stdout);
 
@@ -268,7 +275,7 @@ void solve(int io, double *tdft, FILE *fp) {
                         // 書き込み
                         status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, memspace_id, dataspace_id, H5P_DEFAULT, e_value);
                         if (status < 0) {
-                            fprintf(stderr, "Error writing E data at itime=%d, ifreq=%d, nn=%d¥n", itime, ifreq, nn);
+                            fprintf(stderr, "Error writing E data at itime=%d, ifreq=%d, nn=%d\n", itime, ifreq, nn);
                         }
                     }
                 }
@@ -293,7 +300,7 @@ void solve(int io, double *tdft, FILE *fp) {
                         H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, h_offset, NULL, h_count, NULL);
                         status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, memspace_id, dataspace_id, H5P_DEFAULT, h_value);
                         if (status < 0) {
-                            fprintf(stderr, "Error writing H data at itime=%d, ifreq=%d, nn=%d¥n", itime, ifreq, nn);
+                            fprintf(stderr, "Error writing H data at itime=%d, ifreq=%d, nn=%d\n", itime, ifreq, nn);
                         }
                     }
                }
@@ -323,7 +330,7 @@ void solve(int io, double *tdft, FILE *fp) {
                         H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, surf_offset, NULL, surf_count, NULL);
                         status = H5Dwrite(dataset_id, complex_datatype, memspace_id, dataspace_id, H5P_DEFAULT, surf_value);
                         if (status < 0) {
-                            fprintf(stderr, "Error writing H data at itime=%d, ifreq=%d, surf=%d¥n", itime, ifreq, surf);
+                            fprintf(stderr, "Error writing H data at itime=%d, ifreq=%d, surf=%d\n", itime, ifreq, surf);
                         }
                     }
                 }
@@ -338,6 +345,7 @@ void solve(int io, double *tdft, FILE *fp) {
 
                 // 書き込み用のメモリスペースを修正
                 hsize_t mem_dims2[1] = {3};
+                if (memspace_id >= 0) H5Sclose(memspace_id);
                 memspace_id = H5Screate_simple(1, mem_dims2, NULL);
 
                 for (int ifreq = 0; ifreq < NFreq2; ifreq++) {
@@ -354,7 +362,7 @@ void solve(int io, double *tdft, FILE *fp) {
                         H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, p_offset, NULL, p_count, NULL);
                         status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, memspace_id, dataspace_id, H5P_DEFAULT, p_value);
                         if (status < 0) {
-                            fprintf(stderr, "Error writing P data at itime=%d, ifreq=%d, nn=%d¥n", itime, ifreq, nn);
+                            fprintf(stderr, "Error writing P data at itime=%d, ifreq=%d, nn=%d\n", itime, ifreq, nn);
                         }
                     }
                 }
@@ -368,6 +376,7 @@ void solve(int io, double *tdft, FILE *fp) {
 
                 // 書き込み用のメモリスペースを修正
                 hsize_t mem_dims3[1] = {1};
+                if (memspace_id >= 0) H5Sclose(memspace_id);
                 memspace_id = H5Screate_simple(1, mem_dims3, NULL);
 
                 // 材料の特性設定
@@ -382,7 +391,7 @@ void solve(int io, double *tdft, FILE *fp) {
                         H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, p_offset, NULL, p_count, NULL);
                         status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, memspace_id, dataspace_id, H5P_DEFAULT, P_loss);
                         if (status < 0) {
-                            fprintf(stderr, "Error writing P data at itime=%d, ifreq=%d, nn=%d¥n", itime, ifreq, nn);
+                            fprintf(stderr, "Error writing P data at itime=%d, ifreq=%d, nn=%d\n", itime, ifreq, nn);
                         }
                     }
                 }
@@ -401,9 +410,6 @@ void solve(int io, double *tdft, FILE *fp) {
                 converged = 1;
                 break;
             }
-            
-            // Niterを増加
-            Niter++;
         }
     }
     // メモリの解放
@@ -411,13 +417,13 @@ void solve(int io, double *tdft, FILE *fp) {
     free(P_losses);
 
     // メモリスペース、データセットとデータスペースのクローズ
-    status = H5Sclose(memspace_id);
+    if (memspace_id >= 0) status = H5Sclose(memspace_id);
 
     // result
     if (io) {
         sprintf(str, "    --- %s ---", (converged ? "converged" : "max steps"));
-        fprintf(fp,     "%s¥n", str);
-        fprintf(stdout, "%s¥n", str);
+        fprintf(fp,     "%s\n", str);
+        fprintf(stdout, "%s\n", str);
         fflush(fp);
         fflush(stdout);
     }
