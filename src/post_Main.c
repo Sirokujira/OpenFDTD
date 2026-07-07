@@ -52,12 +52,10 @@ int main(int argc, char *argv[])
 	readout(fp_out);
 	fclose(fp_out);
 	*/
-	readhdf5();
+	readhdf5();   // /metadata の読み込みを含む
 
 	// post process
 	//post();
-
-	read_metadata_from_hdf5();
 
 	// prompt
 	if (prompt) getchar();
