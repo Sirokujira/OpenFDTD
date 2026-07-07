@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.18.3)
 
+# CUDA は WITH_CUDA=ON のときだけ enable_language() で有効化する
+# (nvcc の無い環境・CI でも CPU 版 ofd/ofd_post をビルドできるようにする)
 project(openFDTD
   DESCRIPTION "A free and open source FDTD solver"
-  LANGUAGES C CXX CUDA)
+  LANGUAGES C CXX)
 
 # cmake/Modules ディレクトリをモジュールの検索パスに追加
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
@@ -18,6 +20,7 @@ find_package(Threads REQUIRED)
 # CUDA を使用するかどうかを設定するオプションを追加
 option(WITH_CUDA "Enable CUDA support" ON)
 if(WITH_CUDA)
+    enable_language(CUDA)
     #set(CMAKE_CUDA_HOST_COMPILER /usr/bin/g++)
     message(STATUS ${CMAKE_CUDA_COMPILER})
     message(STATUS ${CMAKE_CUDA_HOST_COMPILER})
@@ -72,6 +75,9 @@ if(WITH_MPI)
     file(GLOB MPI_SOURCES "mpi/*.c")
 else()
     file(GLOB SOURCES "sol/*.c")
+    # setupNear.c は呼び出し元がなく、削除済みグローバル Fnorm を参照する
+    # (CUDA 用の SOURCES2 でも除外済み) — CPU ビルドからも除外する
+    list(REMOVE_ITEM SOURCES "${CMAKE_SOURCE_DIR}/sol/setupNear.c")
 endif()
 
 # HDF5パッケージの検索

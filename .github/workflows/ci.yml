@@ -1,0 +1,49 @@
+# OpenFDTD (処理ロジック) CI — CPU 版ソルバーのビルド + 実サンプルのスモーク実行。
+# CUDA/MPI はランナーに無いため WITH_CUDA=OFF / WITH_MPI=OFF でビルドする
+# (GPU/MPI 版のビルド検証は self-hosted ランナー導入時に拡張)。
+name: CI
+
+on:
+  push:
+    branches: [ main, "claude/**" ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake gcc g++ libhdf5-dev
+
+      - name: Configure (CPU only)
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DWITH_CUDA=OFF -DWITH_MPI=OFF
+
+      - name: Build ofd / ofd_post
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Smoke test — solver (dipole sample)
+        run: |
+          mkdir -p /tmp/smoke && cp data/sample/dipole.ofd /tmp/smoke/
+          cd /tmp/smoke
+          "$GITHUB_WORKSPACE/bin/ofd" -n 2 dipole.ofd
+          grep -q "normal end" ofd.log
+          test -s ofd.out
+
+      - name: Smoke test — post processor
+        run: |
+          cd /tmp/smoke
+          "$GITHUB_WORKSPACE/bin/ofd_post" -n 2 dipole.ofd
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs
+          path: /tmp/smoke/*.log
+          if-no-files-found: ignore
