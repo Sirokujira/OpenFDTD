@@ -15,6 +15,18 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# ── Windows (MSVC) 対応 ──────────────────────────────────────────────
+# libm は存在しない (MATH_LIB を空にする)。ソースは UTF-8 (日本語コメント)。
+# M_PI 等は _USE_MATH_DEFINES が必要。
+if(MSVC)
+    add_compile_options(/utf-8)
+    add_compile_definitions(_USE_MATH_DEFINES _CRT_SECURE_NO_WARNINGS NOMINMAX)
+    set(MATH_LIB "")
+else()
+    set(MATH_LIB m)
+endif()
+
 find_package(Threads REQUIRED)
 
 # CUDA を使用するかどうかを設定するオプションを追加
@@ -413,11 +425,11 @@ else()
         # Link OpenMP libraries to the target
         if(OpenMP_C_FOUND)
             #target_link_libraries(ofd PRIVATE OpenMP::OpenMP_C m)
-            target_link_libraries(ofd PRIVATE OpenMP::OpenMP_C m HDF5::HDF5)
+            target_link_libraries(ofd PRIVATE OpenMP::OpenMP_C ${MATH_LIB} HDF5::HDF5)
             #target_link_libraries(ofd PRIVATE OpenMP::OpenMP_CXX m)
         else()
             #target_link_libraries(ofd PRIVATE m)
-            target_link_libraries(ofd PRIVATE m HDF5::HDF5)
+            target_link_libraries(ofd PRIVATE ${MATH_LIB} HDF5::HDF5)
         endif()
 
         # ターゲットのオブジェクトディレクトリを設定
@@ -444,7 +456,7 @@ if (WITH_POST)
     target_include_directories(ofd_post PUBLIC "${PROJECT_SOURCE_DIR}/include")
 
     #target_link_libraries(ofd_post PRIVATE OpenMP::OpenMP_C m)
-    target_link_libraries(ofd_post PRIVATE OpenMP::OpenMP_C m HDF5::HDF5)
+    target_link_libraries(ofd_post PRIVATE OpenMP::OpenMP_C ${MATH_LIB} HDF5::HDF5)
 
 endif()
 

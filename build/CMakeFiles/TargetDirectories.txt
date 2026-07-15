@@ -1,0 +1,4 @@
+/home/user/OpenFDTD/build/CMakeFiles/ofd.dir
+/home/user/OpenFDTD/build/CMakeFiles/ofd_post.dir
+/home/user/OpenFDTD/build/CMakeFiles/edit_cache.dir
+/home/user/OpenFDTD/build/CMakeFiles/rebuild_cache.dir
