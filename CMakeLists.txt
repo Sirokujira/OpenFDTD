@@ -415,6 +415,10 @@ else()
         target_link_libraries(ofd_mpi PRIVATE MPI::MPI_C HDF5::HDF5)
     else ()
         add_executable(ofd ${SOURCES} src/sol_Main.c)
+        if(MSVC)
+            # MSVC の既定スタック 1MB では FDTD ループが不足する (Linux は 8MB)
+            target_link_options(ofd PRIVATE /STACK:16777216)
+        endif()
         #target_link_libraries(ofd glfw)
         #target_link_libraries(ofd OpenGL::GL)
 
@@ -451,6 +455,9 @@ if (WITH_POST)
     )
 
     add_executable(ofd_post ${POST_SOURCES} ${SOURCES3} src/post_Main.c)
+    if(MSVC)
+        target_link_options(ofd_post PRIVATE /STACK:16777216)
+    endif()
 
     # Include directories for header files
     target_include_directories(ofd_post PUBLIC "${PROJECT_SOURCE_DIR}/include")
