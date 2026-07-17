@@ -21,7 +21,8 @@ GUI フロントエンド [OpenFDTD-X](https://github.com/Sirokujira/OpenFDTD-X)
 ### 入出力
 
 - 入力: `.ofd` テキスト (`sol/input_data.c` が解釈。mesh/material/geometry/
-  feed/planewave/point/abc/pbc/frequency1/2/solver + `plot*` ポストキー)
+  feed/planewave/point/abc/pbc/frequency1/2/solver/tpa/waveamp +
+  `plot*` ポストキー)
 - 出力:
   - `ofd.log` — 実行ログ (収束履歴、`=== normal end ===` で正常終了)
   - `ofd.out` — ポスト処理用バイナリ (ポストの正本)
@@ -39,6 +40,41 @@ GUI フロントエンド [OpenFDTD-X](https://github.com/Sirokujira/OpenFDTD-X)
 - 材料 ID が先頭材料に固定 (セル毎の材料参照は未対応)
 - 出力ステップ毎の `/dataNNNNNN` は大容量 (dipole サンプルで ~50MB)。
   不要な場合は該当ブロックを無効化してください
+
+### 二光子吸収 (TPA) 非線形材料
+
+メタマテリアル装荷 Si 導波路の光活性化関数
+(Honda, Shoji, Amemiya, Opt. Lett. **49**, 5811 (2024)。Si: β = 424 cm/GW)
+を扱うための強度依存吸収 dI/dz = −β I² のモデルです (`sol/updateTpa.c`)。
+
+入力キー (どちらも省略時は従来と完全に同一挙動):
+
+```
+tpa = <material_id> <β [cm/GW]>   # 複数行可。id は material の番号 (0=真空, 1=PEC, 2〜=ユーザー材料)
+waveamp = <E0 [V/m]>              # 平面波を CW 正弦波 (振幅 E0) にする。角周波数は frequency1 の先頭値
+```
+
+物理式: E 更新後に各 E 成分へ一次減衰 `E *= 1/(1+γ)`,
+`γ = Δt σ_NL/(2 ε0 εr)`, `σ_NL = (4/3) β εr ε0² c² |E|²` (瞬時値) を適用します
+(→ `γ = (2/3) β ε0 c² Δt |E|²`, εr に依らない)。係数は CW 定常のサイクル平均が
+dI/dz = −β I² (I = ½ n ε0 c E0²) を再現するよう調和平衡で導出しています
+(導出全文は `sol/updateTpa.c` 冒頭コメント)。|E|² は Yee 格子上の
+colocated 近似 (成分位置に他成分を 4 点平均) で評価します。
+平面波入射 (散乱界定式化) では全電界 E_scat + E_inc に減衰を適用します。
+
+検証 (`data/sample/tpa_slab.ofd` + `data/sample/tpa_slab_check.sh`):
+真空 / λ/4 AR 層 / Si 相当 TPA スラブ (εr=12.1, L=2µm, β=2000 cm/GW 検証値) /
+AR 層 / 真空 の擬似 1D 構成 (x,y は PBC)。AR 層により線形透過率 ≈ 1 かつ
+スラブ内は前進波のみになるので、解析解は Fresnel/Fabry-Perot 補正なしで
+`T = 1/(1 + β I0 L)`, `I0 = ½ ε0 c E0²`。実行すると `ofd.log` に
+`TPA: transmission = <T> (I0=<I0> W/m^2)` が出力され、CI では振幅 3 点
+(E0 = 5e7/1e8/1.5e8 V/m) で解析解との差 ±7% を判定します
+(実測誤差は ±1.6% 程度。残差は数値分散による AR 層のわずかな不整合・
+Mur-1st の残留反射・スラブ端 1 セルの material 判定に起因)。
+
+```sh
+sh data/sample/tpa_slab_check.sh /path/to/bin/ofd /tmp/tpa
+```
 
 ## ビルド
 
@@ -68,8 +104,9 @@ grep "normal end" ofd.log
 
 ## CI / Release
 
-- push / PR ごとに Linux (gcc) と macOS (AppleClang) で CPU ビルド +
-  dipole サンプルのスモーク実行 (`normal end` 判定)
+- push / PR ごとに Linux (gcc) / macOS (AppleClang) / Windows (MSVC) で
+  CPU ビルド + dipole サンプルのスモーク実行 (`normal end` 判定) +
+  TPA スラブ検証 (解析解 ±7% 判定)
 - ビルド成果物は artifact (`ofd-linux-x64` / `ofd-macos-arm64`) に保存
 - `v*` タグを push すると GitHub Release に `ofd-<platform>.tar.gz` が
   自動添付されます (OpenFDTD-X や nightly 統合テストの取得元)

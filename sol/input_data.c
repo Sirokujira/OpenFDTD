@@ -55,6 +55,12 @@ int input_data(FILE *fp)
 
 	NInductor = 0;
 
+	NTpa = 0;
+	Tpa = NULL;
+	TpaBeta = NULL;
+	WaveAmp = 0;
+	WaveOmega = 0;
+
 	iABC = 0;  // Mur-1st
 	PBCx = PBCy = PBCz = 0;
 
@@ -346,6 +352,32 @@ int input_data(FILE *fp)
 			pload[nload] = atof(token[7]);
 			nload++;
 		}
+		else if (!strcmp(strkey, "tpa")) {
+			// 二光子吸収 (TPA) : tpa = <material_id> <beta [cm/GW]>
+			// 出典 : Honda, Shoji, Amemiya, Opt. Lett. 49, 5811 (2024) (Si: β=424 cm/GW)
+			if (ntoken < 4) {
+				printf(errfmt3, strkey, NTpa + 1);
+				return 1;
+			}
+			const int    mtpa = atoi(token[2]);
+			const double btpa = atof(token[3]);
+			if ((mtpa < 0) || (mtpa >= MAXMATERIAL) || (btpa < 0)) {
+				printf(errfmt3, strkey, NTpa + 1);
+				return 1;
+			}
+			Tpa = (tpa_t *)realloc(Tpa, (NTpa + 1) * sizeof(tpa_t));
+			Tpa[NTpa].m    = (id_t)mtpa;
+			Tpa[NTpa].beta = btpa * 1e-11;  // [cm/GW] -> [m/W] (1 cm/GW = 1e-11 m/W)
+			NTpa++;
+		}
+		else if (!strcmp(strkey, "waveamp")) {
+			// 平面波 CW 振幅 [V/m] (>0 で波源がガウス微分パルス -> CW 正弦波になる)
+			WaveAmp = atof(token[2]);
+			if (WaveAmp < 0) {
+				printf(errfmt2, strkey);
+				return 1;
+			}
+		}
 		else if (!strcmp(strkey, "rfeed")) {
 			rFeed = atof(token[2]);
 		}
@@ -529,6 +561,30 @@ int input_data(FILE *fp)
 		if (((dload[n] != 'X') && (dload[n] != 'Y') && (dload[n] != 'Z')) ||
 		    ((cload[n] != 'R') && (cload[n] != 'C') && (cload[n] != 'L'))) {
 			printf("*** invalid load parameter #%d\n", n + 1);
+			return 1;
+		}
+	}
+	// TPA : material id の範囲チェック (0=真空, 1=PEC, 2〜=ユーザー材料)
+	for (int n = 0; n < NTpa; n++) {
+		if (Tpa[n].m >= NMaterial) {
+			printf("*** invalid tpa material id #%d\n", n + 1);
+			return 1;
+		}
+	}
+	// CW 波源 (waveamp) : 平面波専用。角周波数は frequency1 (無ければ frequency2) の先頭値
+	if (WaveAmp > 0) {
+		if (!IPlanewave) {
+			printf("%s\n", "*** waveamp requires planewave");
+			return 1;
+		}
+		if      (NFreq1 > 0) {
+			WaveOmega = 2 * PI * Freq1[0];
+		}
+		else if (NFreq2 > 0) {
+			WaveOmega = 2 * PI * Freq2[0];
+		}
+		else {
+			printf("%s\n", "*** waveamp requires frequency1 or frequency2");
 			return 1;
 		}
 	}
