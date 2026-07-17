@@ -2,6 +2,7 @@
 #include "complex.h"
 #include "ofd_prototype.h"
 #include "ev.h"
+#include "finc.h"
 
 #include "hdf5.h"
 
@@ -102,6 +103,22 @@ void solve(int io, double *tdft, FILE *fp) {
 
     // initial field
     initfield();
+
+    // TPA (二光子吸収) : material id -> β テーブル作成 (sol/updateTpa.c)
+    if (NTpa) {
+        setupTpa();
+    }
+
+    // TPA 検証用の透過率測定 : CW 波源 (waveamp) + 平面波 + point がある場合、
+    // 最終 1 周期の point #1 位置の全電界振幅 |E_tot| から T = (|E_t|/E0)^2 を求める
+    // (point #1 の方向成分が入射偏波と一致していること。data/sample/tpa_slab.ofd 参照)
+    const int tpaMon = (NTpa && IPlanewave && (WaveAmp > 0) && (NPoint > 0));
+    double tpaEmax = 0;
+    int tpaStart = INT_MAX;
+    if (tpaMon) {
+        const int nper = (int)(2 * PI / (WaveOmega * Dt)) + 1;  // 1 周期のステップ数
+        tpaStart = Solver.maxiter - nper;
+    }
 
     // 温度配列の初期化
     //int Nx = 100, Ny = 100, Nz = 100;
@@ -211,9 +228,36 @@ void solve(int io, double *tdft, FILE *fp) {
             eload();
         }
 
+        // TPA (二光子吸収) 非線形減衰 (sol/updateTpa.c)
+        if (NTpa) {
+            updateTpa(t);
+        }
+
         // point
         if (NPoint) {
             vpoint(itime);
+        }
+
+        // TPA 検証用 : 最終 1 周期の全電界振幅を測定
+        if (tpaMon && (itime >= tpaStart)) {
+            const int pi = Point[0].i;
+            const int pj = Point[0].j;
+            const int pk = Point[0].k;
+            real_t fi = 0, dfi = 0;
+            double e = 0;
+            if      (Point[0].dir == 'X') {
+                finc(Xc[pi], Yn[pj], Zn[pk], t, Planewave.r0, Planewave.ri, Planewave.ei[0], Planewave.ai, Dt, &fi, &dfi);
+                e = EX(pi, pj, pk) + fi;
+            }
+            else if (Point[0].dir == 'Y') {
+                finc(Xn[pi], Yc[pj], Zn[pk], t, Planewave.r0, Planewave.ri, Planewave.ei[1], Planewave.ai, Dt, &fi, &dfi);
+                e = EY(pi, pj, pk) + fi;
+            }
+            else if (Point[0].dir == 'Z') {
+                finc(Xn[pi], Yn[pj], Zc[pk], t, Planewave.r0, Planewave.ri, Planewave.ei[2], Planewave.ai, Dt, &fi, &dfi);
+                e = EZ(pi, pj, pk) + fi;
+            }
+            tpaEmax = MAX(tpaEmax, fabs(e));
         }
 
         // DFT
@@ -426,6 +470,18 @@ void solve(int io, double *tdft, FILE *fp) {
     // result
     if (io) {
         sprintf(str, "    --- %s ---", (converged ? "converged" : "max steps"));
+        fprintf(fp,     "%s\n", str);
+        fprintf(stdout, "%s\n", str);
+        fflush(fp);
+        fflush(stdout);
+    }
+
+    // TPA 検証用 : 透過率を出力 (CI が ofd.log のこの行を判定に使う)
+    // I0 = (1/2) ε0 c E0^2 : 入射平面波 (真空中) の強度
+    if (io && tpaMon) {
+        const double i0 = 0.5 * EPS0 * C * WaveAmp * WaveAmp;
+        const double trans = (tpaEmax / WaveAmp) * (tpaEmax / WaveAmp);
+        sprintf(str, "TPA: transmission = %.6f (I0=%.6e W/m^2)", trans, i0);
         fprintf(fp,     "%s\n", str);
         fprintf(stdout, "%s\n", str);
         fflush(fp);

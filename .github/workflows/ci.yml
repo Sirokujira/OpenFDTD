@@ -43,6 +43,10 @@ jobs:
           cd /tmp/smoke
           "$GITHUB_WORKSPACE/bin/ofd_post" -n 2 dipole.ofd
 
+      # TPA (二光子吸収) : 振幅 3 点を掃引し解析解 T=1/(1+β I0 L) と比較 (±7%)
+      - name: Validation test — TPA slab
+        run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-tpa
+
       - name: Upload binaries (artifact)
         uses: actions/upload-artifact@v4
         with:
@@ -68,7 +72,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: smoke-logs
-          path: /tmp/smoke/*.log
+          path: |
+            /tmp/smoke/*.log
+            /tmp/smoke-tpa/*.log
           if-no-files-found: ignore
 
   # macOS (Apple Silicon)。AppleClang は OpenMP を同梱しないため、
@@ -110,6 +116,10 @@ jobs:
           cd /tmp/smoke
           "$GITHUB_WORKSPACE/bin/ofd_post" -n 2 dipole.ofd
 
+      # TPA (二光子吸収) : 振幅 3 点を掃引し解析解 T=1/(1+β I0 L) と比較 (±7%)
+      - name: Validation test — TPA slab
+        run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-tpa
+
       - name: Upload binaries (artifact)
         uses: actions/upload-artifact@v4
         with:
@@ -133,7 +143,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: smoke-logs-macos
-          path: /tmp/smoke/*.log
+          path: |
+            /tmp/smoke/*.log
+            /tmp/smoke-tpa/*.log
           if-no-files-found: ignore
 
   # Windows (MSVC)。依存は vcpkg (x64-windows-static-md 静的リンク) で導入し、
@@ -178,6 +190,31 @@ jobs:
           & "$env:GITHUB_WORKSPACE\bin\ofd_post.exe" -n 2 dipole.ofd
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
+      # TPA (二光子吸収) : 振幅 3 点を掃引し解析解 T=1/(1+β I0 L) と比較 (±7%)
+      # (期待値の導出は data/sample/tpa_slab.ofd のコメント参照)
+      - name: Validation test — TPA slab
+        run: |
+          $cases = @(@("5.0e7", 0.882830), @("1.0e8", 0.653217), @("1.5e8", 0.455687))
+          $src = Get-Content data/sample/tpa_slab.ofd
+          New-Item -ItemType Directory -Force smoke-tpa | Out-Null
+          Set-Location smoke-tpa
+          $fail = $false
+          foreach ($c in $cases) {
+            $amp = $c[0]; $texp = [double]$c[1]
+            ($src -replace '^waveamp = .*', "waveamp = $amp") | Set-Content tpa_run.ofd
+            & "$env:GITHUB_WORKSPACE\bin\ofd.exe" -n 2 tpa_run.ofd | Out-Null
+            if ($LASTEXITCODE -ne 0) { Write-Error "ofd failed (waveamp=$amp)"; exit 1 }
+            $line = (Select-String -Path ofd.log -Pattern "TPA: transmission").Line | Select-Object -Last 1
+            if (-not $line) { Write-Error "no 'TPA: transmission' line in ofd.log"; exit 1 }
+            $t = [double](($line -split ' ')[3])
+            $err = [math]::Abs(($t - $texp) / $texp)
+            Write-Host ("waveamp={0} T_fdtd={1} T_analytic={2} err={3:P2}" -f $amp, $t, $texp, $err)
+            if ($err -gt 0.07) { $fail = $true }
+          }
+          Set-Location ..
+          if ($fail) { Write-Error "TPA validation failed (tolerance 7%)"; exit 1 }
+          Write-Host "TPA validation passed (tolerance 7%)"
+
       - name: Upload binaries (artifact)
         uses: actions/upload-artifact@v4
         with:
@@ -204,4 +241,5 @@ jobs:
           path: |
             smoke/*.log
             smoke-rcwa/*.log
+            smoke-tpa/*.log
           if-no-files-found: ignore

@@ -148,6 +148,12 @@ typedef struct {
 } inductor_t;                 // inductor
 
 typedef struct {
+	id_t   m;                 // material id = 0,1,2,...
+	double beta;              // TPA 係数 β [m/W] (入力は cm/GW)
+} tpa_t;                      // 二光子吸収 (TPA)
+                              // 出典 : Honda, Shoji, Amemiya, Opt. Lett. 49, 5811 (2024) (Si: β=424 cm/GW)
+
+typedef struct {
 	char   dir;               // direction : X/Y/Z/V/H
 	int    div;               // division of angle 360 deg
 	double angle;             // V/H constant angle [deg]
@@ -252,6 +258,12 @@ EXTERN point_t      *Point;                  // point
 
 EXTERN int          NInductor;               // number of inductors
 EXTERN inductor_t   *Inductor;               // inductor
+
+EXTERN int          NTpa;                    // TPA 指定数 (tpa キー)
+EXTERN tpa_t        *Tpa;                    // TPA パラメータ
+EXTERN double       *TpaBeta;                // material id 毎の TPA β [m/W] (setupTpa で作成)
+EXTERN double       WaveAmp;                 // 平面波 CW 振幅 E0 [V/m] (waveamp キー, 0=従来のパルス波源)
+EXTERN double       WaveOmega;               // CW 角周波数 [rad/s] (waveamp > 0 のとき有効)
 
 EXTERN int          iABC;                    // ABC: 0=Mur, 1=PML
 EXTERN int          PBCx, PBCy, PBCz;        // PBC (0/1)

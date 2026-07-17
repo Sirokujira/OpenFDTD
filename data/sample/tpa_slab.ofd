@@ -1,0 +1,34 @@
+OpenFDTD 4 2
+title = TPA slab (1D) : two-photon absorption validation
+# 二光子吸収 (TPA) の 1D 検証ケース
+# 出典 : Honda, Shoji, Amemiya, Opt. Lett. 49, 5811 (2024) (Si: β=424 cm/GW)
+#
+# 構成 (z 方向, x/y は PBC の擬似 1D):
+#   真空 0.4um / AR 層 (εr=3.4785054=n_Si, λ/4=207.76642nm) /
+#   TPA スラブ (Si 相当 εr=12.1, L=2um) / AR 層 / 真空 0.4um
+# λ/4 AR 層により線形透過率 T_lin ≈ 1 かつスラブ内は前進波のみになるので、
+# 解析解は Fresnel 反射・Fabry-Perot 補正なしで
+#   T = 1 / (1 + β I0 L),  I0 = (1/2) ε0 c E0^2 (E0 = waveamp)
+# β = 2000 cm/GW (検証用の大きめの値) → βL = 4e-14 m^2/W
+#   waveamp = 5.0e7  : I0 = 3.318023e12 W/m^2, T = 0.882830
+#   waveamp = 1.0e8  : I0 = 1.327209e13 W/m^2, T = 0.653217
+#   waveamp = 1.5e8  : I0 = 2.986221e13 W/m^2, T = 0.455687
+# 透過率は ofd.log の "TPA: transmission = ..." 行に出力される
+# (point #1 位置の全電界振幅から計測。CI 判定は ±7%)
+xmesh = 0 4 0.4e-6
+ymesh = 0 4 0.4e-6
+zmesh = 0 20 0.4e-6 10 6.0776642368e-7 100 2.6077664237e-6 10 2.8155328474e-6 20 3.2155328474e-6
+material = 1 3.4785054 0 1 0
+material = 1 12.1 0 1 0
+geometry = 2 1 0 0.4e-6 0 0.4e-6 4.0e-7 6.0776642368e-7
+geometry = 3 1 0 0.4e-6 0 0.4e-6 6.0776642368e-7 2.6077664237e-6
+geometry = 2 1 0 0.4e-6 0 0.4e-6 2.6077664237e-6 2.8155328474e-6
+tpa = 3 2000
+planewave = 180 0 1
+waveamp = 1.0e8
+pbc = 1 1 0
+point = X 0.2e-6 0.2e-6 3.0e-6 +Z
+frequency1 = 1.93414489e14 1.93414489e14 0
+frequency2 = 1.93414489e14 1.93414489e14 0
+solver = 2000 1000 0
+end
