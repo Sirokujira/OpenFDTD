@@ -1,9 +1,0 @@
-# Build directories
-/build*/
-/bin/
-
-# Solver outputs
-*.out
-ofe.log
-rlc.csv
-ofe_circuit.sp
