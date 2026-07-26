@@ -76,6 +76,28 @@ Mur-1st の残留反射・スラブ端 1 セルの material 判定に起因)。
 sh data/sample/tpa_slab_check.sh /path/to/bin/ofd /tmp/tpa
 ```
 
+#### 実装ごとの対応状況
+
+| 実装 | TPA | 備考 |
+|---|---|---|
+| CPU (`ofd`) | 対応 | CI (3 OS) で解析解 ±7% を判定 |
+| MPI (`ofd_mpi`) | 対応 | 1 プロセスで CPU 版と完全一致を確認済み |
+| CUDA (`ofd_cuda`) | **未対応** | `cuda/updateTpa.cu` が無い。CUDA ビルドでは TPA が適用されない |
+
+MPI 版では `updateTpa` が `|E|²` の colocated 近似のために隣接セルの E 成分を
+読むため、領域分割時は E のハローを交換してから適用します (`mpi/comm_E.c`)。
+この FDTD の領域分割では E 更新が読むのは H の近傍だけなので、既存の
+`comm_X/Y/Z` は H 面しか交換していませんでした — TPA が E ハローを必要とする
+最初の処理です。
+
+**注意 (既知の未解決問題)**: MPI 版は 2 プロセス以上で実行すると、時間ループ
+終了後の HDF5 メタデータ書き出しでデッドロックします。これは TPA とは無関係な
+既存の不具合で、`mpi/solve.c` の `if (commRank == 0)` ブロック内で
+`H5Gcreate` / `H5Dcreate` (並列 HDF5 では全ランク参加が必須の集団操作) を
+rank 0 だけが呼んでいることが原因です。TPA 無しの `dipole.ofd` でも同様に
+再現します。このため MPI の複数プロセス実行と `mpi/comm_E.c` の実測検証は
+現時点では行えていません。
+
 ## ビルド
 
 必要環境: C99 コンパイラ / CMake 3.18+ / libhdf5
