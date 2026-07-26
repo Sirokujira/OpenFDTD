@@ -81,7 +81,7 @@ sh data/sample/tpa_slab_check.sh /path/to/bin/ofd /tmp/tpa
 | 実装 | TPA | 備考 |
 |---|---|---|
 | CPU (`ofd`) | 対応 | CI (3 OS) で解析解 ±7% を判定 |
-| MPI (`ofd_mpi`) | 対応 | 1 プロセスで CPU 版と完全一致を確認済み |
+| MPI (`ofd_mpi`) | 対応 | 7 通りの領域分割で CPU 版と完全一致を確認済み |
 | CUDA (`ofd_cuda`) | **未対応** | `cuda/updateTpa.cu` が無い。CUDA ビルドでは TPA が適用されない |
 
 MPI 版では `updateTpa` が `|E|²` の colocated 近似のために隣接セルの E 成分を
@@ -90,13 +90,19 @@ MPI 版では `updateTpa` が `|E|²` の colocated 近似のために隣接セ�
 `comm_X/Y/Z` は H 面しか交換していませんでした — TPA が E ハローを必要とする
 最初の処理です。
 
-**注意 (既知の未解決問題)**: MPI 版は 2 プロセス以上で実行すると、時間ループ
-終了後の HDF5 メタデータ書き出しでデッドロックします。これは TPA とは無関係な
-既存の不具合で、`mpi/solve.c` の `if (commRank == 0)` ブロック内で
-`H5Gcreate` / `H5Dcreate` (並列 HDF5 では全ランク参加が必須の集団操作) を
-rank 0 だけが呼んでいることが原因です。TPA 無しの `dipole.ofd` でも同様に
-再現します。このため MPI の複数プロセス実行と `mpi/comm_E.c` の実測検証は
-現時点では行えていません。
+検証結果 (`data/sample/tpa_slab.ofd`、透過率は CPU 版と完全一致):
+
+| 実行 | 透過率 |
+|---|---|
+| CPU (`ofd`) | 0.646848 |
+| MPI `-p 1 1 1` / `1 1 2` / `1 1 4` | 0.646848 |
+| MPI `-p 2 1 1` / `1 2 1` / `2 2 1` / `2 2 2` | 0.646848 |
+
+MPI 2 プロセスでの解析解検証も CPU 版と同じ誤差 (−0.30% / −0.98% / +1.57%) で
+3 点とも合格します。
+
+MPI 版で TPA を使うには**並列 MPI ビルド用の HDF5 は不要**です
+(下記「MPI ビルド」参照)。
 
 ## ビルド
 

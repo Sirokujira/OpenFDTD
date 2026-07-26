@@ -144,6 +144,9 @@ void comm_broadcast(void)
 			d_num += 6 * NInductor;
 			c_num += 1 * NInductor;
 		}
+		// TPA (二光子吸収) : NTpa + material id、および CW 波源のパラメータ
+		i_num += 1 + (1 * NTpa);
+		d_num += 2 + (1 * NTpa);
 
 		// alloc
 		i_buf = (int *)   malloc(i_num * sizeof(int));
@@ -265,6 +268,15 @@ void comm_broadcast(void)
 			d_buf[d_id++] = Inductor[n].fctr;
 			d_buf[d_id++] = Inductor[n].e;
 			d_buf[d_id++] = Inductor[n].esum;
+		}
+
+		// TPA (二光子吸収)
+		i_buf[i_id++] = NTpa;
+		d_buf[d_id++] = WaveAmp;
+		d_buf[d_id++] = WaveOmega;
+		for (int n = 0; n < NTpa; n++) {
+			i_buf[i_id++] = (int)Tpa[n].m;
+			d_buf[d_id++] = Tpa[n].beta;
 		}
 
 		for (int n = 0; n < NFreq1; n++) {
@@ -436,6 +448,21 @@ void comm_broadcast(void)
 				Inductor[n].fctr = d_buf[d_id++];
 				Inductor[n].e    = d_buf[d_id++];
 				Inductor[n].esum = d_buf[d_id++];
+			}
+		}
+
+		// TPA (二光子吸収)
+		// これを配り忘れると rank != 0 で NTpa = 0 となり TPA 処理を丸ごと
+		// スキップするため、ランク間で集団操作の呼び出しが食い違って
+		// デッドロックする (実際に踏んだ)。
+		NTpa      = i_buf[i_id++];
+		WaveAmp   = d_buf[d_id++];
+		WaveOmega = d_buf[d_id++];
+		if (NTpa > 0) {
+			Tpa = (tpa_t *)malloc(NTpa * sizeof(tpa_t));
+			for (int n = 0; n < NTpa; n++) {
+				Tpa[n].m    = (id_t)i_buf[i_id++];
+				Tpa[n].beta = d_buf[d_id++];
 			}
 		}
 

@@ -42,18 +42,40 @@ CUDA/MPI ビルドは誰も気付かないままリンクエラーになる**。
 - `sol/updateTpa.c` — CPU と MPI は対応済み (SOURCES3 に登録)。
   **CUDA は未対応** (`cuda/updateTpa.cu` が無い)。
 
-## MPI の既知の制約
+## MPI で踏んだ落とし穴 (すべて修正済み。同じ轍を踏まないこと)
 
-- **2 プロセス以上でデッドロックする** (TPA と無関係な既存不具合)。
-  `mpi/solve.c` の `if (commRank == 0)` ブロックが `H5Gcreate` / `H5Dcreate`
-  という並列 HDF5 の集団操作を rank 0 だけで呼んでいるため。
-  修正するときは create/close を全ランクで呼び、`H5Dwrite` だけを rank 0 に
-  限る形にする必要がある (`ofd_post` が読む HDF5 の形式を壊さないこと)。
-- MPI ビルドには**並列 HDF5** が必要 (`H5Pset_fapl_mpio` を使うため)。
-  Ubuntu なら `libhdf5-openmpi-dev`、`HDF5_ROOT=/usr/lib/x86_64-linux-gnu/hdf5/openmpi`
-  を指定する。直列 HDF5 だとリンクエラーになる。
+- **入力データを配り忘れるとデッドロックする**。`mpi/comm.c` の
+  `comm_broadcast()` は rank 0 が読んだ入力を他ランクへ配る。**新しい入力キーを
+  足したらここにも足すこと**。配り忘れると rank != 0 でその機能が丸ごと無効に
+  なり、機能内の集団操作 (通信・Allreduce) の呼び出しがランク間で食い違って
+  デッドロックする。TPA (`NTpa` / `Tpa` / `WaveAmp` / `WaveOmega`) で実際に踏んだ。
+  症状は「1 プロセスなら正常、2 プロセス以上でハング」。
+- **rank 条件の中で HDF5 の集団操作を呼ばない**。並列 HDF5
+  (`H5Pset_fapl_mpio`) では `H5Gcreate` / `H5Dcreate` / `H5Dclose` /
+  `H5Gclose` / `H5Fclose` は全ランクが同じ順序で呼ぶ必要がある。
+  以前は `if (io)` / `if (commRank == 0)` の中で呼んでいてデッドロックしていた。
+  このファイルに書かれるのはすべて rank 0 の値なので、**直列ドライバで
+  rank 0 だけが開く**形にして解決済み (`ofd_post` が読む構造は不変)。
+  → **MPI ビルドに並列 HDF5 は不要**になった。
 - `comm_X/Y/Z` は **H 面しか交換していない**。E の近傍を読む処理を追加する
   場合は `mpi/comm_E.c` の `comm_E_X/Y/Z()` を先に呼ぶこと。
+- ログ出力の改行に全角の `¥n` を使わない (`\n`)。`ofd.log` が 1 行に潰れて
+  検証スクリプトが値を取れなくなる。
+
+## MPI の検証手順
+
+```bash
+apt-get install -y libhdf5-dev libopenmpi-dev openmpi-bin
+cmake -B build-mpi -DCMAKE_BUILD_TYPE=Release -DWITH_CUDA=OFF -DWITH_MPI=ON
+cmake --build build-mpi --target ofd_mpi -j4
+
+# プロセス数・分割方向によらず結果が一致することを必ず確認する
+for p in "1 1 1" "1 1 2" "2 1 1" "1 2 1" "2 2 2"; do
+  mpirun --allow-run-as-root --oversubscribe -n $(echo $p | tr ' ' '*' | bc) \
+    ./bin/ofd_mpi -p $p -n 1 tpa_slab.ofd >/dev/null
+  grep -o "TPA: transmission = [0-9.]*" ofd.log | tail -1
+done
+```
 
 ## 既存機能に手を入れるとき
 
