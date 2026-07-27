@@ -1,6 +1,12 @@
-# OpenFDTD (処理ロジック) CI — CPU 版ソルバーのビルド + 実サンプルのスモーク実行。
-# CUDA/MPI はランナーに無いため WITH_CUDA=OFF / WITH_MPI=OFF でビルドする
-# (GPU/MPI 版のビルド検証は self-hosted ランナー導入時に拡張)。
+# OpenFDTD (処理ロジック) CI — 各実装のビルド + 実サンプルのスモーク実行。
+#
+#   build-cpu / build-macos / build-windows … CPU 版 (ofd, ofd_post) を 3 OS で
+#   build-mpi                               … ofd_mpi (並列実行の一致まで検証)
+#   build-cuda                              … ofd_cuda / ofd_cuda_mpi
+#
+# ランナーに GPU は無いが、CUDA 版はセル毎の演算が __host__ __device__ の
+# 共通関数なので -cpu 実行 (GPU を使わない実行モード) で物理まで判定できる。
+# 実機 GPU でのカーネル起動構成のみ未検証 (self-hosted ランナー導入時に拡張)。
 name: CI
 
 on:
@@ -47,6 +53,11 @@ jobs:
       - name: Validation test — TPA slab
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-tpa
 
+      # 熱解析レイヤ : 発熱密度がセル毎の材料を参照していることの検証
+      # (熱解析レイヤは CPU 版のみなので build-mpi / build-cuda では実行しない)
+      - name: Validation test — thermal per-cell material
+        run: sh data/sample/thermal_material_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-thermal
+
       - name: Upload binaries (artifact)
         uses: actions/upload-artifact@v4
         with:
@@ -75,6 +86,7 @@ jobs:
           path: |
             /tmp/smoke/*.log
             /tmp/smoke-tpa/*.log
+            /tmp/smoke-thermal/*.log
           if-no-files-found: ignore
 
   # macOS (Apple Silicon)。AppleClang は OpenMP を同梱しないため、
@@ -120,6 +132,11 @@ jobs:
       - name: Validation test — TPA slab
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-tpa
 
+      # 熱解析レイヤ : 発熱密度がセル毎の材料を参照していることの検証
+      # (熱解析レイヤは CPU 版のみなので build-mpi / build-cuda では実行しない)
+      - name: Validation test — thermal per-cell material
+        run: sh data/sample/thermal_material_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-thermal
+
       - name: Upload binaries (artifact)
         uses: actions/upload-artifact@v4
         with:
@@ -146,6 +163,7 @@ jobs:
           path: |
             /tmp/smoke/*.log
             /tmp/smoke-tpa/*.log
+            /tmp/smoke-thermal/*.log
           if-no-files-found: ignore
 
   # Windows (MSVC)。依存は vcpkg (x64-windows-static-md 静的リンク) で導入し、
@@ -242,4 +260,122 @@ jobs:
             smoke/*.log
             smoke-rcwa/*.log
             smoke-tpa/*.log
+          if-no-files-found: ignore
+
+  # MPI 版 (ofd_mpi) のビルドと並列実行の検証。
+  # 以前は CPU 版しかビルドしていなかったため、MPI ビルドが壊れていること
+  # (存在しないソースの参照・並列 HDF5 前提のコード・入力の配り忘れによる
+  # デッドロック) に長期間気付けなかった。ここで恒常的に検証する。
+  # 並列 HDF5 は不要 (rank 0 が直列ドライバで書く) なので libhdf5-dev で足りる。
+  build-mpi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake gcc g++ libhdf5-dev libopenmpi-dev openmpi-bin
+
+      - name: Configure (MPI)
+        run: cmake -B build-mpi -DCMAKE_BUILD_TYPE=Release -DWITH_CUDA=OFF -DWITH_MPI=ON
+
+      - name: Build ofd_mpi / ofd_post
+        run: cmake --build build-mpi -j"$(nproc)"
+
+      # 1 プロセスと 2 プロセスで結果が完全一致すること
+      # (dipole は TPA を使わないので、並列化そのものの回帰検出になる)
+      - name: Smoke test — dipole (1 and 2 processes)
+        run: |
+          mkdir -p /tmp/mpi-smoke && cp data/sample/dipole.ofd /tmp/mpi-smoke/
+          cd /tmp/mpi-smoke
+          mpirun --oversubscribe -n 1 "$GITHUB_WORKSPACE/bin/ofd_mpi" -p 1 1 1 -n 1 dipole.ofd
+          grep -q "normal end" ofd.log
+          grep -A3 "input impedance" ofd.log | tail -1 > zin1.txt
+          mpirun --oversubscribe -n 2 "$GITHUB_WORKSPACE/bin/ofd_mpi" -p 1 1 2 -n 1 dipole.ofd
+          grep -q "normal end" ofd.log
+          grep -A3 "input impedance" ofd.log | tail -1 > zin2.txt
+          diff zin1.txt zin2.txt
+
+      # 領域分割の取り方によらず TPA の結果が一致すること (ハロー交換・
+      # comm_broadcast の漏れを検出する。2 プロセス以上でのハングもここで落ちる)
+      - name: Validation test — TPA decomposition invariance
+        run: sh data/sample/tpa_decomp_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-decomp
+
+      # 解析解との比較 (CPU 版と同じスクリプト・同じ期待値を 2 プロセスで実行)
+      - name: Validation test — TPA slab (2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -p 1 1 2
+        run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-tpa
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs-mpi
+          path: |
+            /tmp/mpi-smoke/*.log
+            /tmp/mpi-decomp/*.log
+            /tmp/mpi-tpa/*.log
+          if-no-files-found: ignore
+
+  # CUDA 版 (ofd_cuda) と CUDA+MPI 版 (ofd_cuda_mpi) のビルド検証。
+  # ランナーに GPU は無いが、
+  #   - nvcc でのコンパイル・リンクは通せる (ビルドリストの取りこぼしを検出)
+  #   - セル毎の演算は __host__ __device__ の共通関数なので、-cpu 実行
+  #     (GPU を使わない実行モード) で物理の正しさまで判定できる
+  # ため、GPU 無しランナーでも実質的な回帰検出になる。
+  # 実機 GPU でのカーネル起動構成は依然として未検証 (self-hosted 導入時に拡張)。
+  #
+  # ubuntu-24.04 に固定する : distro の nvidia-cuda-toolkit (CUDA 12.0) は
+  # 同じ distro の gcc (13) を受け付けるようパッチされている組み合わせで、
+  # ubuntu-latest が次の LTS に上がると nvcc がホストコンパイラを拒否しうる。
+  build-cuda:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake gcc g++ libhdf5-dev nvidia-cuda-toolkit \
+                                  libopenmpi-dev openmpi-bin
+          nvcc --version
+
+      - name: Configure / build (CUDA)
+        run: |
+          cmake -B build-cuda -DCMAKE_BUILD_TYPE=Release -DWITH_CUDA=ON -DWITH_MPI=OFF
+          cmake --build build-cuda --target ofd_cuda -j"$(nproc)"
+
+      - name: Validation test — TPA slab (ofd_cuda, CPU execution mode)
+        env:
+          OFD_ARGS: -cpu
+        run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda" /tmp/cuda-tpa
+
+      - name: Configure / build (CUDA + MPI)
+        run: |
+          cmake -B build-cuda-mpi -DCMAKE_BUILD_TYPE=Release -DWITH_CUDA=ON -DWITH_MPI=ON
+          cmake --build build-cuda-mpi --target ofd_cuda_mpi -j"$(nproc)"
+
+      - name: Validation test — TPA decomposition invariance (ofd_cuda_mpi)
+        run: sh data/sample/tpa_decomp_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-decomp -cpu
+
+      - name: Validation test — TPA slab (ofd_cuda_mpi, 2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -cpu -p 1 1 2
+        run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-tpa
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs-cuda
+          path: |
+            /tmp/cuda-tpa/*.log
+            /tmp/cuda-mpi-decomp/*.log
+            /tmp/cuda-mpi-tpa/*.log
           if-no-files-found: ignore

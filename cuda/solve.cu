@@ -553,7 +553,11 @@ void solve(int io, double *tdft, FILE *fp)
     hsize_t surface_dims[1] = {NSurface};
     dataspace_id = H5Screate_simple(1, surface_dims, NULL);
     dataset_id = H5Dcreate(metadata_group_id, "Surface", memtype, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-    status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, Surface);
+    // メモリ側の型も複合型 (memtype) を渡す。H5T_NATIVE_DOUBLE を渡すと
+    // 複合型への変換経路が無く H5Dwrite が失敗し (HDF5-DIAG "no appropriate
+    // function for conversion path")、/metadata/Surface が書かれないまま残る。
+    // sol/solve.c・mpi/solve.c は memtype を渡しており、ここだけずれていた。
+    status = H5Dwrite(dataset_id, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, Surface);
     H5Dclose(dataset_id);
     H5Sclose(dataspace_id);
     H5Tclose(memtype);

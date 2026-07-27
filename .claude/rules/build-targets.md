@@ -21,11 +21,24 @@ paths:
 | `ofd_mpi` | `set(SOURCES3 ...)` 手書き + `mpi/*.c` の glob | 新規ファイルは**入らない** |
 | `ofd_post` | `set(SOURCES3 ...)` 別定義 (5 ファイルのみ) + `post/*.c` | 同上 |
 
-CI (`.github/workflows/ci.yml`) は 3 OS とも `WITH_CUDA=OFF -DWITH_MPI=OFF`
-でしかビルドしない。つまり **`sol/` に新しい .c を足すと CPU ビルドだけ通り、
-CUDA/MPI ビルドは誰も気付かないままリンクエラーになる**。
+CI (`.github/workflows/ci.yml`) のジョブと守備範囲:
 
-`.claude/hooks/check-portability.sh` が編集のたびにこれを検査する。
+| ジョブ | ビルドするもの | 検証 |
+|---|---|---|
+| `build-cpu` / `build-macos` / `build-windows` | `ofd`, `ofd_post` | dipole スモーク + TPA 解析解 |
+| `build-mpi` | `ofd_mpi`, `ofd_post` | dipole の 1/2 プロセス一致 + 分割不変性 + TPA 解析解 (2 プロセス) |
+| `build-cuda` | `ofd_cuda`, `ofd_cuda_mpi` | `-cpu` 実行で TPA 解析解 + 分割不変性 |
+
+`sol/` に新しい .c を足して `SOURCES2` / `SOURCES3` への追加を忘れると、
+CPU ビルドだけ通って CUDA/MPI がリンクエラーになる。
+**これは長期間 CI で検出できていなかった** (以前は 3 OS とも
+`WITH_CUDA=OFF -DWITH_MPI=OFF` しかビルドしていなかった)。
+現在は `build-mpi` / `build-cuda` が落ちる。編集時点で気付けるよう
+`.claude/hooks/check-portability.sh` も編集のたびに検査する。
+
+ランナーに GPU は無いので、CUDA 版の検証は `-cpu` (GPU を使わない実行モード)
+で行う。セル毎の演算は `__host__ __device__` の共通関数なので物理の正しさは
+判定できるが、**カーネル起動構成と実機 GPU 実行は依然として未検証**。
 
 ## 新しい sol/*.c を足すときの選択肢
 
@@ -40,10 +53,11 @@ CUDA/MPI ビルドは誰も気付かないままリンクエラーになる**。
   CPU (REMOVE_ITEM) でも CUDA (SOURCES2) でも MPI (SOURCES3) でも除外済み。
 - `sol/solve.c` — MPI は `mpi/solve.c`、CUDA は `cuda/solve.cu` と対になっている。
 - `sol/updateTpa.c` — CPU と MPI は対応済み (SOURCES3 に登録)。
-  CUDA は `cuda/updateTpa.cu` と対になっている (CUDA_SOURCES に登録、
-  SOURCES2 には `sol/updateTpa.c` を入れないこと)。
-  **`ofd_cuda_mpi` (CUDA+MPI) だけ未対応** — `CUDA_SOURCES2` に
-  `updateTpa.cu` が無く、`MPI_SOURCES2` に `comm_E.c` も無い。
+  CUDA は `cuda/updateTpa.cu` と対になっている (`CUDA_SOURCES` と
+  `CUDA_SOURCES2` に登録、SOURCES2 には `sol/updateTpa.c` を入れないこと)。
+- `mpi/comm_E.c` — E ハロー交換の CPU 実装。CUDA+MPI では E が device 側に
+  あり得るので `cuda_mpi/comm_cuda_E.cu` (同じ交換内容の GPU 版) を使う。
+  `MPI_SOURCES2` には入れない (`cuda_mpi/*.cu` は glob で自動的に入る)。
 
 ## MPI で踏んだ落とし穴 (すべて修正済み。同じ轍を踏まないこと)
 

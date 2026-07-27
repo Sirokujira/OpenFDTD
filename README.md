@@ -35,9 +35,39 @@ GUI フロントエンド [OpenFDTD-X](https://github.com/Sirokujira/OpenFDTD-X)
 
 `sol/solve.c` は DFT 済み電磁界から発熱密度 P_loss を計算し、
 3次元熱拡散 (`updateTemperature`) で温度分布を更新して HDF5 に書き出します。
+
+発熱密度は各セル・各成分について
+
+```
+p = (1/2) σ_e |E|² + (1/2) σ_m |H|²   [W/m³]
+```
+
+で、σ_e は導電率 (material の 3 番目の値)、σ_m は磁気導電率 (同 5 番目) です。
+**材料は成分ごとの材料 ID 配列 (`iEx`..`iHz`) からセル毎に引きます**。
+実行すると `ofd.log` に、セル体積で重み付けした総和が周波数ごとに出力されます:
+
+```
+Thermal: dissipated[0] = <値> (f=<周波数> Hz)
+```
+
+近傍界 DFT は入射スペクトルで正規化されている (`sol/setupDft.c`) ため、
+この値は入射振幅 1 あたりの相対量です。検証は
+`data/sample/thermal_slab.ofd` + `data/sample/thermal_material_check.sh` で、
+σ を変えたときの 4 つの性質 (σ>0 で正 / 同一材料なら material id に依らず
+一致 / σ=0 で 0 / σ 2 倍で 2 倍) を判定します。
+
+```sh
+sh data/sample/thermal_material_check.sh /path/to/bin/ofd /tmp/thermal
+```
+
 現状は次の制約があります:
 
-- 材料 ID が先頭材料に固定 (セル毎の材料参照は未対応)
+- **CPU 版 (`ofd`) のみ**。`ofd_mpi` / `ofd_cuda` / `ofd_cuda_mpi` には
+  熱解析レイヤ自体が存在しません
+- 熱拡散係数 α と初期温度がソース内の定数 (入力キーが無い)。
+  温度の境界条件も内点のみ更新の固定境界
+- セル幅を平均値 `(Xn[Nx]-Xn[0])/Nx` で取るため不等間隔メッシュ非対応
+- 温度配列を周波数ごとに持つ構造 (物理的には重ね合わせ後に 1 つのはず)
 - 出力ステップ毎の `/dataNNNNNN` は大容量 (dipole サンプルで ~50MB)。
   不要な場合は該当ブロックを無効化してください
 
@@ -74,6 +104,14 @@ Mur-1st の残留反射・スラブ端 1 セルの material 判定に起因)。
 
 ```sh
 sh data/sample/tpa_slab_check.sh /path/to/bin/ofd /tmp/tpa
+
+# MPI / CUDA のバイナリにも同じスクリプト・同じ期待値を掛けられる
+OFD_LAUNCHER="mpirun --oversubscribe -n 2" OFD_ARGS="-p 1 1 2" \
+  sh data/sample/tpa_slab_check.sh /path/to/bin/ofd_mpi /tmp/tpa-mpi
+OFD_ARGS="-cpu" sh data/sample/tpa_slab_check.sh /path/to/bin/ofd_cuda /tmp/tpa-cuda
+
+# 領域分割の取り方によらず結果が一致することの検証 (MPI 版)
+sh data/sample/tpa_decomp_check.sh /path/to/bin/ofd_mpi /tmp/tpa-decomp
 ```
 
 #### 実装ごとの対応状況
@@ -81,8 +119,9 @@ sh data/sample/tpa_slab_check.sh /path/to/bin/ofd /tmp/tpa
 | 実装 | TPA | 備考 |
 |---|---|---|
 | CPU (`ofd`) | 対応 | CI (3 OS) で解析解 ±7% を判定 |
-| MPI (`ofd_mpi`) | 対応 | 7 通りの領域分割で CPU 版と完全一致を確認済み |
-| CUDA (`ofd_cuda`) | 対応 | `-cpu` 実行で解析解 3 点合格。GPU カーネルは nvcc でコンパイル検証のみ (実機 GPU 未検証) |
+| MPI (`ofd_mpi`) | 対応 | 7 通りの領域分割で CPU 版と完全一致。CI (`build-mpi`) で分割不変性と解析解を判定 |
+| CUDA (`ofd_cuda`) | 対応 | `-cpu` 実行で解析解 3 点合格。CI (`build-cuda`) で判定。GPU カーネルは nvcc でコンパイル検証のみ (実機 GPU 未検証) |
+| CUDA+MPI (`ofd_cuda_mpi`) | 対応 | `-cpu` 実行で 5 通りの領域分割が `ofd_cuda` と完全一致 (0.646838)、解析解 3 点合格 |
 
 MPI 版では `updateTpa` が `|E|²` の colocated 近似のために隣接セルの E 成分を
 読むため、領域分割時は E のハローを交換してから適用します (`mpi/comm_E.c`)。
@@ -146,9 +185,15 @@ grep "normal end" ofd.log
 
 ## CI / Release
 
-- push / PR ごとに Linux (gcc) / macOS (AppleClang) / Windows (MSVC) で
-  CPU ビルド + dipole サンプルのスモーク実行 (`normal end` 判定) +
-  TPA スラブ検証 (解析解 ±7% 判定)
+- push / PR ごとに次の 5 ジョブを実行する
+  - `build-cpu` / `build-macos` / `build-windows` — Linux (gcc) / macOS
+    (AppleClang) / Windows (MSVC) で CPU ビルド + dipole サンプルの
+    スモーク実行 (`normal end` 判定) + TPA スラブ検証 (解析解 ±7% 判定)
+  - `build-mpi` — `ofd_mpi` をビルドし、dipole の 1/2 プロセス一致、
+    TPA の領域分割不変性 (5 通り)、2 プロセスでの解析解を判定
+  - `build-cuda` — `ofd_cuda` と `ofd_cuda_mpi` を nvcc でビルドし、
+    `-cpu` 実行で解析解と領域分割不変性を判定
+    (ランナーに GPU が無いためカーネル起動構成は未検証)
 - ビルド成果物は artifact (`ofd-linux-x64` / `ofd-macos-arm64`) に保存
 - `v*` タグを push すると GitHub Release に `ofd-<platform>.tar.gz` が
   自動添付されます (OpenFDTD-X や nightly 統合テストの取得元)

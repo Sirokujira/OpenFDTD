@@ -225,6 +225,9 @@ if (WITH_CUDA)
                 ${CMAKE_SOURCE_DIR}/cuda/updateHx.cu
                 ${CMAKE_SOURCE_DIR}/cuda/updateHy.cu
                 ${CMAKE_SOURCE_DIR}/cuda/updateHz.cu
+                # TPA (二光子吸収)。sol/updateTpa.c と対になる GPU 実装なので
+                # SOURCES2 に sol/updateTpa.c を入れないこと (二重定義になる)。
+                ${CMAKE_SOURCE_DIR}/cuda/updateTpa.cu
                 ${CMAKE_SOURCE_DIR}/cuda/vpoint.cu
             )
 
@@ -232,6 +235,9 @@ if (WITH_CUDA)
                 ${CMAKE_SOURCE_DIR}/mpi/comm.c
                 ${CMAKE_SOURCE_DIR}/mpi/setup_mpi.c
             )
+            # 注: E ハロー交換は cuda_mpi/comm_cuda_E.cu (GPU 対応版) を使う。
+            #     CPU+MPI 版の mpi/comm_E.c はここには入れない。
+            #     cuda_mpi/*.cu は下の file(GLOB CUDA_MPI_SOURCES) で自動的に入る。
 
             file(GLOB CUDA_MPI_SOURCES "cuda_mpi/*.cu")
             add_library(ofd_cuda_libmpi ${SOURCES2} ${MPI_SOURCES2} ${CUDA_MPI_SOURCES} ${CUDA_SOURCES2})

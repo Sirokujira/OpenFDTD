@@ -23,8 +23,17 @@ paths:
 
 `.claude/rules/build-targets.md` を必ず読むこと。CPU (`sol/`) にだけ追加した
 機能は **README に CUDA/MPI の対応状況を明記する**。
-現状: `tpa` (二光子吸収) と `waveamp` (CW 波源) は CPU / MPI / CUDA 対応済み。
-`ofd_cuda_mpi` (CUDA+MPI) のみ未対応。熱解析レイヤは CPU (`sol/solve.c`) のみ。
+現状: `tpa` (二光子吸収) と `waveamp` (CW 波源) は CPU / MPI / CUDA /
+CUDA+MPI の 4 実装すべて対応済み。熱解析レイヤは CPU (`sol/solve.c`) のみ。
+
+## 光学周波数帯のサンプルを作るとき
+
+近傍界 DFT は入射スペクトルで正規化される (`sol/setupDft.c` が
+`cFdft` = 波源の周波数成分で割る)。既定のガウス微分パルスは幅が
+周波数設定から自動決定されるため、**光学周波数帯 (λ ~ 1.5 µm) では
+`frequency2` の位置に十分なスペクトルが乗らず、DFT が 0/NaN になる**。
+`waveamp` で CW 波源にすること (`tpa_slab.ofd` / `thermal_slab.ofd` が
+そうしている)。時間領域の場は正常に見えるので気付きにくい。
 
 ## 検証ケース (新機能には必須)
 
@@ -34,11 +43,16 @@ paths:
    コメントに持ち、`tpa_slab_check.sh` が振幅 3 点を掃引して ±7% で比較する。
 2. 判定スクリプトは POSIX sh + awk/grep/sed のみで書く
    (`data/sample/tpa_slab_check.sh` が雛形)。
-3. CI (`.github/workflows/ci.yml`) の 3 ジョブすべてにステップを足す。
+3. CI (`.github/workflows/ci.yml`) の関係するジョブすべてにステップを足す
+   (`build-cpu` / `build-macos` / `build-windows` / `build-mpi` / `build-cuda`)。
    **Windows ジョブは PowerShell なので sh スクリプトをそのまま呼べず、
    同じ判定を PowerShell で書き直している** — 期待値を変えたら両方直すこと
    (現状 TPA の期待値が Linux/macOS の .sh と Windows の .ps1 相当ブロックに
    二重管理されている)。
+   判定スクリプトは `OFD_LAUNCHER` (実行ファイルの前に置くコマンド) と
+   `OFD_ARGS` (追加オプション) を見るので、**同じスクリプト・同じ期待値のまま
+   MPI (`mpirun -n 2`) や CUDA (`-cpu`) のバイナリにも掛けられる**。
+   実装ごとに判定を書き分けないこと。
 4. 期待値は**コードとは独立な出所**にする。解析解・文献値・別実装との比較。
    コード自身の出力を期待値にすると回帰テストにしかならない。
 
