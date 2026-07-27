@@ -6,11 +6,21 @@
 # 比較する (許容誤差 ±7%、期待値の導出は tpa_slab.ofd のコメント参照)。
 #
 # 使い方 : tpa_slab_check.sh <ofd 実行ファイル(絶対パス)> [作業ディレクトリ]
+#
+# 環境変数 (どちらも省略時は従来と完全に同じ動作):
+#   OFD_LAUNCHER … 実行ファイルの前に置くコマンド。MPI 版の検証に使う
+#                  例: OFD_LAUNCHER="mpirun --oversubscribe -n 2"
+#   OFD_ARGS     … 実行ファイルに渡す追加オプション
+#                  例: OFD_ARGS="-cpu -p 1 1 2"
+# 解析解 (期待値) はソルバーの実装に依らないので、CPU / MPI / CUDA /
+# CUDA+MPI のどのバイナリでもこのスクリプト 1 本で判定できる。
 
 set -e
 
 OFD="$1"
 WORK="${2:-.}"
+LAUNCHER="${OFD_LAUNCHER:-}"
+EXTRA="${OFD_ARGS:-}"
 SRC="$(cd "$(dirname "$0")" && pwd)/tpa_slab.ofd"
 TOL=0.07
 
@@ -27,7 +37,8 @@ for pair in "5.0e7 0.882830" "1.0e8 0.653217" "1.5e8 0.455687"; do
 	amp=${pair% *}
 	texp=${pair#* }
 	sed "s/^waveamp = .*/waveamp = $amp/" "$SRC" > "$WORK/tpa_run.ofd"
-	(cd "$WORK" && "$OFD" -n 2 tpa_run.ofd > /dev/null)
+	# $LAUNCHER / $EXTRA は複数語に分解させたいので意図的にクォートしない
+	(cd "$WORK" && $LAUNCHER "$OFD" $EXTRA -n 2 tpa_run.ofd > /dev/null)
 	t=$(grep "TPA: transmission" "$WORK/ofd.log" | tail -1 | awk '{print $4}')
 	if [ -z "$t" ]; then
 		echo "*** no 'TPA: transmission' line in $WORK/ofd.log" >&2

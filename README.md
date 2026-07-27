@@ -74,6 +74,14 @@ Mur-1st の残留反射・スラブ端 1 セルの material 判定に起因)。
 
 ```sh
 sh data/sample/tpa_slab_check.sh /path/to/bin/ofd /tmp/tpa
+
+# MPI / CUDA のバイナリにも同じスクリプト・同じ期待値を掛けられる
+OFD_LAUNCHER="mpirun --oversubscribe -n 2" OFD_ARGS="-p 1 1 2" \
+  sh data/sample/tpa_slab_check.sh /path/to/bin/ofd_mpi /tmp/tpa-mpi
+OFD_ARGS="-cpu" sh data/sample/tpa_slab_check.sh /path/to/bin/ofd_cuda /tmp/tpa-cuda
+
+# 領域分割の取り方によらず結果が一致することの検証 (MPI 版)
+sh data/sample/tpa_decomp_check.sh /path/to/bin/ofd_mpi /tmp/tpa-decomp
 ```
 
 #### 実装ごとの対応状況
@@ -81,8 +89,9 @@ sh data/sample/tpa_slab_check.sh /path/to/bin/ofd /tmp/tpa
 | 実装 | TPA | 備考 |
 |---|---|---|
 | CPU (`ofd`) | 対応 | CI (3 OS) で解析解 ±7% を判定 |
-| MPI (`ofd_mpi`) | 対応 | 7 通りの領域分割で CPU 版と完全一致を確認済み |
-| CUDA (`ofd_cuda`) | 対応 | `-cpu` 実行で解析解 3 点合格。GPU カーネルは nvcc でコンパイル検証のみ (実機 GPU 未検証) |
+| MPI (`ofd_mpi`) | 対応 | 7 通りの領域分割で CPU 版と完全一致。CI (`build-mpi`) で分割不変性と解析解を判定 |
+| CUDA (`ofd_cuda`) | 対応 | `-cpu` 実行で解析解 3 点合格。CI (`build-cuda`) で判定。GPU カーネルは nvcc でコンパイル検証のみ (実機 GPU 未検証) |
+| CUDA+MPI (`ofd_cuda_mpi`) | 対応 | `-cpu` 実行で 5 通りの領域分割が `ofd_cuda` と完全一致 (0.646838)、解析解 3 点合格 |
 
 MPI 版では `updateTpa` が `|E|²` の colocated 近似のために隣接セルの E 成分を
 読むため、領域分割時は E のハローを交換してから適用します (`mpi/comm_E.c`)。
@@ -146,9 +155,15 @@ grep "normal end" ofd.log
 
 ## CI / Release
 
-- push / PR ごとに Linux (gcc) / macOS (AppleClang) / Windows (MSVC) で
-  CPU ビルド + dipole サンプルのスモーク実行 (`normal end` 判定) +
-  TPA スラブ検証 (解析解 ±7% 判定)
+- push / PR ごとに次の 5 ジョブを実行する
+  - `build-cpu` / `build-macos` / `build-windows` — Linux (gcc) / macOS
+    (AppleClang) / Windows (MSVC) で CPU ビルド + dipole サンプルの
+    スモーク実行 (`normal end` 判定) + TPA スラブ検証 (解析解 ±7% 判定)
+  - `build-mpi` — `ofd_mpi` をビルドし、dipole の 1/2 プロセス一致、
+    TPA の領域分割不変性 (5 通り)、2 プロセスでの解析解を判定
+  - `build-cuda` — `ofd_cuda` と `ofd_cuda_mpi` を nvcc でビルドし、
+    `-cpu` 実行で解析解と領域分割不変性を判定
+    (ランナーに GPU が無いためカーネル起動構成は未検証)
 - ビルド成果物は artifact (`ofd-linux-x64` / `ofd-macos-arm64`) に保存
 - `v*` タグを push すると GitHub Release に `ofd-<platform>.tar.gz` が
   自動添付されます (OpenFDTD-X や nightly 統合テストの取得元)
