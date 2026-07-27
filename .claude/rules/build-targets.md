@@ -40,7 +40,10 @@ CUDA/MPI ビルドは誰も気付かないままリンクエラーになる**。
   CPU (REMOVE_ITEM) でも CUDA (SOURCES2) でも MPI (SOURCES3) でも除外済み。
 - `sol/solve.c` — MPI は `mpi/solve.c`、CUDA は `cuda/solve.cu` と対になっている。
 - `sol/updateTpa.c` — CPU と MPI は対応済み (SOURCES3 に登録)。
-  **CUDA は未対応** (`cuda/updateTpa.cu` が無い)。
+  CUDA は `cuda/updateTpa.cu` と対になっている (CUDA_SOURCES に登録、
+  SOURCES2 には `sol/updateTpa.c` を入れないこと)。
+  **`ofd_cuda_mpi` (CUDA+MPI) だけ未対応** — `CUDA_SOURCES2` に
+  `updateTpa.cu` が無く、`MPI_SOURCES2` に `comm_E.c` も無い。
 
 ## MPI で踏んだ落とし穴 (すべて修正済み。同じ轍を踏まないこと)
 
