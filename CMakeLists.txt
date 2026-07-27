@@ -33,6 +33,10 @@ find_package(Threads REQUIRED)
 option(WITH_CUDA "Enable CUDA support" ON)
 if(WITH_CUDA)
     enable_language(CUDA)
+    # CUDA ビルドであることを C ソース (sol/*.c) からも判定できるようにする
+    # (MPI 版の _MPI と同じ流儀)。CUDA 版でビルド対象外の機能 (tpa/waveamp) の
+    # 警告に使う — sol/monitor.c 参照。
+    add_compile_definitions(_CUDA)
     #set(CMAKE_CUDA_HOST_COMPILER /usr/bin/g++)
     message(STATUS ${CMAKE_CUDA_COMPILER})
     message(STATUS ${CMAKE_CUDA_HOST_COMPILER})

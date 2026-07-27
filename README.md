@@ -76,6 +76,46 @@ Mur-1st の残留反射・スラブ端 1 セルの material 判定に起因)。
 sh data/sample/tpa_slab_check.sh /path/to/bin/ofd /tmp/tpa
 ```
 
+#### CUDA / MPI 対応状況
+
+**`tpa` / `waveamp` は CPU 版 (`ofd`) のみの対応です。**
+
+| 実行ファイル | ビルド | `tpa` | `waveamp` (CW 波源) | `TPA: transmission` 出力 |
+|---|---|:-:|:-:|:-:|
+| `ofd`          | `-DWITH_CUDA=OFF -DWITH_MPI=OFF` | ○ | ○ | ○ |
+| `ofd_mpi`      | `-DWITH_MPI=ON`                  | **×** | ○ | × |
+| `ofd_cuda`     | `-DWITH_CUDA=ON`                 | **×** | **×** | × |
+| `ofd_cuda_mpi` | `-DWITH_CUDA=ON -DWITH_MPI=ON`   | **×** | **×** | × |
+
+理由:
+
+- `sol/updateTpa.c` は `CMakeLists.txt` の CUDA 用ソース一覧 (`SOURCES2`) にも
+  MPI 用ソース一覧 (`SOURCES3`) にも含まれず、`cuda/solve.cu` /
+  `cuda_mpi/solve.cu` / `mpi/solve.c` のいずれも `updateTpa()` を呼びません。
+  よって未対応版では `tpa` キーは読まれるだけで場の更新に反映されません
+  (ビルド・実行はエラーにならず、線形材料として計算されます)。
+- CUDA 版の入射波関数は `include/finc_cuda.h` で、CPU 版の `include/finc.h` と
+  違い `WaveAmp` を参照しません。したがって CUDA 版では `waveamp` を指定しても
+  波源は従来のガウス微分パルスのままです。MPI 版は `sol/updateE?.c` (`finc.h`)
+  を使うので `waveamp` は有効です。
+- TPA 検証用の `TPA: transmission = ...` 行は `sol/solve.c` にのみあります。
+
+黙って無視して誤った結果を出さないよう、未対応のビルドで該当キーを指定すると
+反復開始前に `ofd.log` と標準出力へ次の警告を出します
+(`sol/monitor.c` の `monitorWarning_()`。判定は CMake が定義する
+`_CUDA` / `_MPI` マクロ):
+
+```
+*** warning : tpa is not supported in the CUDA version (ignored)
+*** warning : waveamp is not supported in the CUDA version (ignored)
+```
+
+CUDA / MPI で TPA を使いたい場合は、`cuda/updateTpa.cu` (E 更新後に呼ぶ
+セル局所カーネル) の追加と `finc_cuda.h` の CW 対応が必要です。TPA 減衰は
+セル局所の演算で袖 (halo) 交換を伴わないため、MPI 版は `mpi/solve.c` に
+`setupTpa()` / `updateTpa(t)` の呼び出しと `sol/updateTpa.c` のビルド追加を
+行えば領域分割によらず同じ結果になる見込みですが、**未実装・未検証**です。
+
 ## ビルド
 
 必要環境: C99 コンパイラ / CMake 3.18+ / libhdf5

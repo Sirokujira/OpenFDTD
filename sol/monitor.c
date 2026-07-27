@@ -50,6 +50,43 @@ static void monitor2_(FILE *fp, int gpu, int commsize)
 }
 
 
+// ビルド構成で未対応の機能の警告 (CPU 版は全機能対応なので何も出力しない)
+//
+// 対応状況の根拠 :
+//  - TPA : sol/updateTpa.c は CMakeLists.txt の CUDA 用ソース一覧 (SOURCES2) にも
+//    MPI 用ソース一覧 (SOURCES3) にも含まれず、cuda/solve.cu・cuda_mpi/solve.cu・
+//    mpi/solve.c のいずれも setupTpa()/updateTpa() を呼ばない。したがって
+//    tpa キーは解析はされるが場の更新には一切反映されない。
+//  - waveamp (CW 波源) : CUDA 版の入射波関数は include/finc_cuda.h であり
+//    WaveAmp を参照しない (CPU 版の include/finc.h のみ対応)。よって CUDA 版では
+//    従来のガウス微分パルスのままになる。MPI 版は sol/updateE?.c (finc.h) を
+//    使うので waveamp は有効。
+static void monitorWarning_(FILE *fp)
+{
+#if defined(_CUDA)
+	const char ver[] = "CUDA";
+#elif defined(_MPI)
+	const char ver[] = "MPI";
+#endif
+
+#if defined(_CUDA) || defined(_MPI)
+	if (NTpa > 0) {
+		fprintf(fp, "*** warning : tpa is not supported in the %s version (ignored)\n", ver);
+		fflush(fp);
+	}
+#endif
+
+#if defined(_CUDA)
+	if (WaveAmp > 0) {
+		fprintf(fp, "*** warning : waveamp is not supported in the CUDA version (ignored)\n");
+		fflush(fp);
+	}
+#endif
+
+	(void)fp;
+}
+
+
 // output files
 static void monitor3_(FILE *fp, const char fn_log[], const char fn_out[])
 {
@@ -88,6 +125,10 @@ void monitor1(FILE *fp, const char msg[])
 
 void monitor2(FILE *fp, int gpu, int commsize)
 {
+	// 未対応機能の警告 (ログと標準出力の両方) : 反復開始前に出す
+	monitorWarning_(fp);
+	monitorWarning_(stdout);
+
 	monitor2_(fp,     gpu, commsize);
 	monitor2_(stdout, gpu, commsize);
 }
