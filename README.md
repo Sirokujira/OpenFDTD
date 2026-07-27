@@ -35,9 +35,39 @@ GUI フロントエンド [OpenFDTD-X](https://github.com/Sirokujira/OpenFDTD-X)
 
 `sol/solve.c` は DFT 済み電磁界から発熱密度 P_loss を計算し、
 3次元熱拡散 (`updateTemperature`) で温度分布を更新して HDF5 に書き出します。
+
+発熱密度は各セル・各成分について
+
+```
+p = (1/2) σ_e |E|² + (1/2) σ_m |H|²   [W/m³]
+```
+
+で、σ_e は導電率 (material の 3 番目の値)、σ_m は磁気導電率 (同 5 番目) です。
+**材料は成分ごとの材料 ID 配列 (`iEx`..`iHz`) からセル毎に引きます**。
+実行すると `ofd.log` に、セル体積で重み付けした総和が周波数ごとに出力されます:
+
+```
+Thermal: dissipated[0] = <値> (f=<周波数> Hz)
+```
+
+近傍界 DFT は入射スペクトルで正規化されている (`sol/setupDft.c`) ため、
+この値は入射振幅 1 あたりの相対量です。検証は
+`data/sample/thermal_slab.ofd` + `data/sample/thermal_material_check.sh` で、
+σ を変えたときの 4 つの性質 (σ>0 で正 / 同一材料なら material id に依らず
+一致 / σ=0 で 0 / σ 2 倍で 2 倍) を判定します。
+
+```sh
+sh data/sample/thermal_material_check.sh /path/to/bin/ofd /tmp/thermal
+```
+
 現状は次の制約があります:
 
-- 材料 ID が先頭材料に固定 (セル毎の材料参照は未対応)
+- **CPU 版 (`ofd`) のみ**。`ofd_mpi` / `ofd_cuda` / `ofd_cuda_mpi` には
+  熱解析レイヤ自体が存在しません
+- 熱拡散係数 α と初期温度がソース内の定数 (入力キーが無い)。
+  温度の境界条件も内点のみ更新の固定境界
+- セル幅を平均値 `(Xn[Nx]-Xn[0])/Nx` で取るため不等間隔メッシュ非対応
+- 温度配列を周波数ごとに持つ構造 (物理的には重ね合わせ後に 1 つのはず)
 - 出力ステップ毎の `/dataNNNNNN` は大容量 (dipole サンプルで ~50MB)。
   不要な場合は該当ブロックを無効化してください
 

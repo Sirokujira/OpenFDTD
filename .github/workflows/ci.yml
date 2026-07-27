@@ -53,6 +53,11 @@ jobs:
       - name: Validation test — TPA slab
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-tpa
 
+      # 熱解析レイヤ : 発熱密度がセル毎の材料を参照していることの検証
+      # (熱解析レイヤは CPU 版のみなので build-mpi / build-cuda では実行しない)
+      - name: Validation test — thermal per-cell material
+        run: sh data/sample/thermal_material_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-thermal
+
       - name: Upload binaries (artifact)
         uses: actions/upload-artifact@v4
         with:
@@ -81,6 +86,7 @@ jobs:
           path: |
             /tmp/smoke/*.log
             /tmp/smoke-tpa/*.log
+            /tmp/smoke-thermal/*.log
           if-no-files-found: ignore
 
   # macOS (Apple Silicon)。AppleClang は OpenMP を同梱しないため、
@@ -126,6 +132,11 @@ jobs:
       - name: Validation test — TPA slab
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-tpa
 
+      # 熱解析レイヤ : 発熱密度がセル毎の材料を参照していることの検証
+      # (熱解析レイヤは CPU 版のみなので build-mpi / build-cuda では実行しない)
+      - name: Validation test — thermal per-cell material
+        run: sh data/sample/thermal_material_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-thermal
+
       - name: Upload binaries (artifact)
         uses: actions/upload-artifact@v4
         with:
@@ -152,6 +163,7 @@ jobs:
           path: |
             /tmp/smoke/*.log
             /tmp/smoke-tpa/*.log
+            /tmp/smoke-thermal/*.log
           if-no-files-found: ignore
 
   # Windows (MSVC)。依存は vcpkg (x64-windows-static-md 静的リンク) で導入し、

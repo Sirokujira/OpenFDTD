@@ -32,61 +32,79 @@ void updateTemperature(double *T, int64_t NN, int NFreq2, double alpha, double D
 }
 
 
-// 発熱量の計算
+// 発熱量の計算 (セル毎に材料を参照する)
+//
+// 各セル・各成分について
+//   p = (1/2) σ_e |E|^2 + (1/2) σ_m |H|^2   [W/m^3]
+// を足し合わせる。σ_e は導電率 [S/m] (material の esgm)、σ_m は磁気
+// 導電率 [Ω/m] (同 msgm) で、FDTD の損失項そのものなので μ'' を別に
+// 与える必要はない (σ_m = ω μ'' の関係にある)。
+//
+// Yee 格子では 6 成分がそれぞれ別の位置にあり、材料 ID も成分ごとに
+// 独立の配列 (iEx..iHz) を持つ。以前はセル位置に依らず材料 0 (通常は
+// 真空 = σ_e 0) の σ を全セルに使い、磁気損失は定数 1e-3 を仮置きして
+// いたため、発熱密度は実質的に構造を反映していなかった。
+//
 // 注意: DFT 配列 (cEx_r 等) は float。double* で受けると読み越しになり
-// Windows ではアクセス違反になる (glibc では偶然動作していた)
-void calculatePowerLoss(double *P_loss, int64_t NN, int NFreq2, double sigma, double mu_double_prime,
+// Windows ではアクセス違反になる (glibc では偶然動作していた)。
+// 材料 ID 配列 (iEx 等) は id_t で、ビルド構成により型幅が変わる。
+static void calculatePowerLoss(double *P_loss, int64_t nn, int nfreq2,
+                        const double *esgm, const double *msgm,
+                        const id_t *iex, const id_t *iey, const id_t *iez,
+                        const id_t *ihx, const id_t *ihy, const id_t *ihz,
                         const float *cEx_r, const float *cEx_i, const float *cEy_r, const float *cEy_i,
                         const float *cEz_r, const float *cEz_i,
                         const float *cHx_r, const float *cHx_i, const float *cHy_r, const float *cHy_i,
-                        const float *cHz_r, const float *cHz_i,
-                        const double *Freq2) {
-    for (int ifreq = 0; ifreq < NFreq2; ifreq++) {
-        double frequency = Freq2[ifreq];  // 各周波数を取得
-        double omega = 2 * M_PI * frequency;  // 角周波数の計算
-        int64_t base_idx = (int64_t)ifreq * NN;
-        for (int64_t i = 0; i < NN; i++) {
-            // 電界の絶対値二乗
-            double E_magnitude_sq = (double)cEx_r[base_idx + i] * cEx_r[base_idx + i] + (double)cEx_i[base_idx + i] * cEx_i[base_idx + i] +
-                                    (double)cEy_r[base_idx + i] * cEy_r[base_idx + i] + (double)cEy_i[base_idx + i] * cEy_i[base_idx + i] +
-                                    (double)cEz_r[base_idx + i] * cEz_r[base_idx + i] + (double)cEz_i[base_idx + i] * cEz_i[base_idx + i];
+                        const float *cHz_r, const float *cHz_i) {
+    for (int ifreq = 0; ifreq < nfreq2; ifreq++) {
+        int64_t base_idx = (int64_t)ifreq * nn;
+        int64_t i;
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+        for (i = 0; i < nn; i++) {
+            const int64_t n = base_idx + i;
 
-            // 磁界の絶対値二乗
-            double H_magnitude_sq = (double)cHx_r[base_idx + i] * cHx_r[base_idx + i] + (double)cHx_i[base_idx + i] * cHx_i[base_idx + i] +
-                                    (double)cHy_r[base_idx + i] * cHy_r[base_idx + i] + (double)cHy_i[base_idx + i] * cHy_i[base_idx + i] +
-                                    (double)cHz_r[base_idx + i] * cHz_r[base_idx + i] + (double)cHz_i[base_idx + i] * cHz_i[base_idx + i];
+            // 電界による損失 : 成分ごとに自分の位置の材料の σ_e を使う
+            const double ex2 = ((double)cEx_r[n] * cEx_r[n]) + ((double)cEx_i[n] * cEx_i[n]);
+            const double ey2 = ((double)cEy_r[n] * cEy_r[n]) + ((double)cEy_i[n] * cEy_i[n]);
+            const double ez2 = ((double)cEz_r[n] * cEz_r[n]) + ((double)cEz_i[n] * cEz_i[n]);
+            const double pe = (esgm[iex[i]] * ex2)
+                            + (esgm[iey[i]] * ey2)
+                            + (esgm[iez[i]] * ez2);
 
-            // 発熱量密度の計算
-            P_loss[base_idx + i] = 0.5 * sigma * E_magnitude_sq + 0.5 * omega * mu_double_prime * H_magnitude_sq;
+            // 磁界による損失 : 同様に σ_m を使う
+            const double hx2 = ((double)cHx_r[n] * cHx_r[n]) + ((double)cHx_i[n] * cHx_i[n]);
+            const double hy2 = ((double)cHy_r[n] * cHy_r[n]) + ((double)cHy_i[n] * cHy_i[n]);
+            const double hz2 = ((double)cHz_r[n] * cHz_r[n]) + ((double)cHz_i[n] * cHz_i[n]);
+            const double pm = (msgm[ihx[i]] * hx2)
+                            + (msgm[ihy[i]] * hy2)
+                            + (msgm[ihz[i]] * hz2);
+
+            P_loss[n] = 0.5 * (pe + pm);
         }
     }
 }
 
-// 導電率の取得関数
-double get_conductivity(int material_id) {
-    if (material_id < 0 || material_id >= NMaterial) {
-        fprintf(stderr, "Invalid material ID: %d\n", material_id);
-        return -1.0;
+// 材料 id -> 損失パラメータの表を作る (発熱密度の計算用)
+//   esgm[m] : 導電率     σ_e [S/m]
+//   msgm[m] : 磁気導電率 σ_m [Ω/m]
+// 材料 ID 配列 (iEx 等) が指す先を毎セル Material[] から引くと構造体
+// アクセスが入るので、平坦な double 配列にしておく。
+// PEC (id = 1) は E も H も更新されず場が 0 なので、σ を入れても
+// 発熱には寄与しない (Material[1] の値をそのまま使ってよい)。
+static void setup_loss_table(double **esgm, double **msgm) {
+    *esgm = (double *)malloc(NMaterial * sizeof(double));
+    *msgm = (double *)malloc(NMaterial * sizeof(double));
+    if ((*esgm == NULL) || (*msgm == NULL)) {
+        // 既存の malloc エラー表示 (NN) と同じく size_t にキャストして %zu で出す
+        fprintf(stderr, "*** loss table malloc error (NMaterial=%zu)\n", (size_t)NMaterial);
+        exit(1);
     }
-    return Material[material_id].esgm;  // E-σ（導電率）を返す
-}
-
-// 比誘電率の取得関数
-double get_relative_permittivity(int material_id) {
-    if (material_id < 0 || material_id >= NMaterial) {
-        fprintf(stderr, "Invalid material ID: %d\n", material_id);
-        return -1.0;
+    for (int64_t m = 0; m < NMaterial; m++) {
+        (*esgm)[m] = Material[m].esgm;
+        (*msgm)[m] = Material[m].msgm;
     }
-    return Material[material_id].epsr;  // ε-r（比誘電率）を返す
-}
-
-// 比透磁率の取得関数
-double get_relative_permeability(int material_id) {
-    if (material_id < 0 || material_id >= NMaterial) {
-        fprintf(stderr, "Invalid material ID: %d\n", material_id);
-        return -1.0;
-    }
-    return Material[material_id].amur;  // μ-r（比透磁率）を返す
 }
 
 void solve(int io, double *tdft, FILE *fp) {
@@ -152,17 +170,13 @@ void solve(int io, double *tdft, FILE *fp) {
     // HDF5ファイルの作成
     file_id = H5Fcreate(FILE_NAME, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
 
+    // 発熱密度に使う材料毎の損失パラメータ (セル毎に材料 ID 配列から引く)
+    double *loss_esgm = NULL, *loss_msgm = NULL;
+    setup_loss_table(&loss_esgm, &loss_msgm);
+
     // time step iteration
     int itime;
     double t = 0;
-    //double sigma = 1e3;      // 導電率 [S/m]（適宜変更）
-	int material_id = 0; // 使用したい材料のIDを設定
-	double sigma = get_conductivity(material_id);
-	double epsr = get_relative_permittivity(material_id);
-	double amur = get_relative_permeability(material_id);
-    double mu_double_prime = 1e-3; // 磁気損失係数 [H/m]（適宜変更）
-    //double frequency = 200e12;      // 周波数 [Hz]（適宜変更）
-    //double omega = 2 * M_PI * frequency; // 角周波数 [rad/s]
     for (itime = 0; itime <= Solver.maxiter; itime++) {
 
         // update H
@@ -265,10 +279,11 @@ void solve(int io, double *tdft, FILE *fp) {
         dftNear3d(itime);
         *tdft += cputime() - t0;
 
-        // 発熱量の計算
-        calculatePowerLoss(P_losses, NN, NFreq2, sigma, mu_double_prime, 
+        // 発熱量の計算 (セル毎に材料を参照する)
+        calculatePowerLoss(P_losses, NN, NFreq2, loss_esgm, loss_msgm,
+                           iEx, iEy, iEz, iHx, iHy, iHz,
                            cEx_r, cEx_i, cEy_r, cEy_i, cEz_r, cEz_i,
-                           cHx_r, cHx_i, cHy_r, cHy_i, cHz_r, cHz_i, Freq2);
+                           cHx_r, cHx_i, cHy_r, cHy_i, cHz_r, cHz_i);
 
         // 温度の更新
         //updateTemperature(T, Nx, Ny, Nz, alpha, Dt, P_loss);
@@ -460,10 +475,6 @@ void solve(int io, double *tdft, FILE *fp) {
             }
         }
     }
-    // メモリの解放
-    free(T);
-    free(P_losses);
-
     // メモリスペース、データセットとデータスペースのクローズ
     if (memspace_id >= 0) status = H5Sclose(memspace_id);
 
@@ -487,6 +498,41 @@ void solve(int io, double *tdft, FILE *fp) {
         fflush(fp);
         fflush(stdout);
     }
+
+    // 熱解析レイヤの診断 : 発熱密度をセル体積で重み付けして全体を積算する。
+    // DFT (cEx_r 等) は入射スペクトルで正規化されていないので、この値は
+    // 絶対的な W ではなく相対量。それでも
+    //   - 損失材料が無ければ 0 になる
+    //   - 同じ形状・同じ材料定数なら material id の付け方に依らず一致する
+    // という性質は成り立つので、セル毎の材料参照が効いていることを
+    // 外から確認できる (data/sample/thermal_material_check.sh)。
+    if (io) {
+        for (int ifreq = 0; ifreq < NFreq2; ifreq++) {
+            const int64_t base_idx = (int64_t)ifreq * NN;
+            double psum = 0;
+            for (int i = 0; i < Nx; i++) {
+            for (int j = 0; j < Ny; j++) {
+            for (int k = 0; k < Nz; k++) {
+                const double dv = (Xn[i + 1] - Xn[i])
+                                * (Yn[j + 1] - Yn[j])
+                                * (Zn[k + 1] - Zn[k]);
+                psum += P_losses[base_idx + NA(i, j, k)] * dv;
+            }
+            }
+            }
+            sprintf(str, "Thermal: dissipated[%d] = %.6e (f=%.6e Hz)", ifreq, psum, Freq2[ifreq]);
+            fprintf(fp,     "%s\n", str);
+            fprintf(stdout, "%s\n", str);
+        }
+        fflush(fp);
+        fflush(stdout);
+    }
+
+    // 熱解析レイヤのメモリ解放 (上の診断で P_losses を読み終えてから)
+    free(T);
+    free(P_losses);
+    free(loss_esgm);
+    free(loss_msgm);
 
     // time steps
     Ntime = itime + converged;
