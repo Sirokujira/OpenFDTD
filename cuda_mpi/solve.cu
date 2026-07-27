@@ -5,9 +5,11 @@ solve.cu (CUDA + MPI)
 #include "ofd.h"
 #include "ofd_cuda.h"
 #include "ofd_prototype.h"
+#include "finc.h"      // TPA 検証用の透過率測定で入射波形 finc() を使う (ofd.h の後)
 
 #include "hdf5.h"
 #include <mpi.h>
+#include <limits.h>
 #define FILE_NAME "time_series_data.h5"
 
 static void setup_cuda_mpi();
@@ -41,13 +43,38 @@ void solve(int io, double *tdft, FILE *fp)
     // initial field
     initfield();
 
-    // MPIコミュニケータを使用したファイルアクセスプロパティリストの作成
-    hid_t plist_id = H5Pcreate(H5P_FILE_ACCESS);
-    H5Pset_fapl_mpio(plist_id, MPI_COMM_WORLD, MPI_INFO_NULL);
+    // TPA (二光子吸収) : material id -> β テーブル作成 (cuda/updateTpa.cu)
+    if (NTpa) {
+        setupTpa();
+    }
 
-    // HDF5ファイルの作成 (MPI対応)
-    file_id = H5Fcreate(FILE_NAME, H5F_ACC_TRUNC, H5P_DEFAULT, plist_id);
-    H5Pclose(plist_id);
+    // TPA 検証用の透過率測定 : CW 波源 (waveamp) + 平面波 + point がある場合、
+    // 最終 1 周期の point #1 位置の全電界振幅 |E_tot| から T = (|E_t|/E0)^2 を求める
+    // (MPI では point を含むプロセスだけが測定し、最後に全プロセスで最大値を取る)
+    const int tpaMon = (NTpa && IPlanewave && (WaveAmp > 0) && (NPoint > 0));
+    double tpaEmax = 0;
+    int tpaStart = INT_MAX;
+    if (tpaMon) {
+        const int nper = (int)(2 * PI / (WaveOmega * Dt)) + 1;  // 1 周期のステップ数
+        tpaStart = Solver.maxiter - nper;
+    }
+
+    // HDF5 ファイルの作成 (rank 0 のみ / 直列アクセス)
+    //
+    // このファイルに書かれるのはすべて rank 0 が持つ値であり、グループ・
+    // データセットの生成も書き込みも rank 0 だけが行っている (下記の
+    // if (io) / if (commRank == 0) ブロック)。
+    // ところが以前は H5Pset_fapl_mpio で MPI-IO ドライバを使って開いていた。
+    // 並列 HDF5 では H5Gcreate / H5Dcreate / H5Dclose / H5Gclose / H5Fclose は
+    // 全ランクが同じ順序で呼ぶ必要がある集団操作なので、rank 0 だけが呼ぶと
+    // 他のランクと足並みが揃わずデッドロックする。
+    // CPU+MPI 版 (mpi/solve.c) と同じ修正で、出力されるファイルの内容・構造は
+    // 従来と同一。→ CUDA+MPI ビルドにも並列 HDF5 は不要。
+    hid_t plist_id;
+    file_id = -1;
+    if (commRank == 0) {
+        file_id = H5Fcreate(FILE_NAME, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+    }
 
     // time step iteration
     int itime;
@@ -142,6 +169,43 @@ void solve(int io, double *tdft, FILE *fp)
             eload();
         }
 
+        // TPA (二光子吸収) 非線形減衰 (cuda/updateTpa.cu)
+        // 領域境界の E ハローを先に交換する : updateTpa は |E|^2 の colocated
+        // 近似のため隣接セルの E 成分を読む (E 更新自体は H しか読まないので
+        // 既存の comm_cuda_X/Y/Z(0) は H しか交換していない)
+        if (NTpa) {
+            if (Npx > 1) comm_cuda_E_X();
+            if (Npy > 1) comm_cuda_E_Y();
+            if (Npz > 1) comm_cuda_E_Z();
+            updateTpa(t);
+        }
+
+        // TPA 検証用 : 最終 1 周期の全電界振幅を測定 (point を含むプロセスのみ)
+        // (GPU 実行時は E が device 側にあるため、UM でない場合は測定できない)
+        if (tpaMon && (itime >= tpaStart)) {
+            if (GPU) cudaDeviceSynchronize();
+            const int pi = Point[0].i;
+            const int pj = Point[0].j;
+            const int pk = Point[0].k;
+            if (comm_inproc(pi, pj, pk)) {
+                real_t fi = 0, dfi = 0;
+                double e = 0;
+                if      (Point[0].dir == 'X') {
+                    finc(h_Xc[pi], h_Yn[pj], h_Zn[pk], t, Planewave.r0, Planewave.ri, Planewave.ei[0], Planewave.ai, Dt, &fi, &dfi);
+                    e = EX(pi, pj, pk) + fi;
+                }
+                else if (Point[0].dir == 'Y') {
+                    finc(h_Xn[pi], h_Yc[pj], h_Zn[pk], t, Planewave.r0, Planewave.ri, Planewave.ei[1], Planewave.ai, Dt, &fi, &dfi);
+                    e = EY(pi, pj, pk) + fi;
+                }
+                else if (Point[0].dir == 'Z') {
+                    finc(h_Xn[pi], h_Yn[pj], h_Zc[pk], t, Planewave.r0, Planewave.ri, Planewave.ei[2], Planewave.ai, Dt, &fi, &dfi);
+                    e = EZ(pi, pj, pk) + fi;
+                }
+                tpaEmax = MAX(tpaEmax, fabs(e));
+            }
+        }
+
         // point
         if (NPoint) {
             vpoint(itime);
@@ -175,8 +239,8 @@ void solve(int io, double *tdft, FILE *fp)
             // monitor
             if (io) {
                 sprintf(str, "%7d %.6f %.6f", itime, fsum[0], fsum[1]);
-                fprintf(fp,     "%s¥n", str);
-                fprintf(stdout, "%s¥n", str);
+                fprintf(fp,     "%s\n", str);
+                fprintf(stdout, "%s\n", str);
                 fflush(fp);
                 fflush(stdout);
                 
@@ -191,7 +255,7 @@ void solve(int io, double *tdft, FILE *fp)
                 snprintf(group_name, sizeof(group_name), "/data%06d", itime);
                 group_id = H5Gcreate(file_id, group_name, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
                 //sprintf(str, "group_name : %s", group_name);
-                //fprintf(stdout, "%s¥n", str);
+                //fprintf(stdout, "%s\n", str);
 
                 // Eフィールドデータセットの作成と書き込み
                 hsize_t e_dims[4] = {1, NFreq2, NN, 6};
@@ -203,12 +267,12 @@ void solve(int io, double *tdft, FILE *fp)
                 memspace_id = H5Screate_simple(1, mem_dims, NULL);
 
                 //sprintf(str, "NFreq2 : %d", NFreq2);
-                //fprintf(stdout, "%s¥n", str);
+                //fprintf(stdout, "%s\n", str);
 
                 for (int ifreq = 0; ifreq < NFreq2; ifreq++) {
                     int64_t n0 = ifreq * NN;
                     for (int nn = 0; nn < NN; nn++) {
-                        //fprintf(stdout, "set e_value.¥n");
+                        //fprintf(stdout, "set e_value.\n");
 
                         double e_value[6] = {
                             cEx_r[n0 + nn], cEy_r[n0 + nn], cEz_r[n0 + nn],
@@ -217,17 +281,17 @@ void solve(int io, double *tdft, FILE *fp)
 
                         hsize_t e_offset[4] = {0, ifreq, nn, 0};
                         hsize_t e_count[4] = {1, 1, 1, 6};
-                        //fprintf(stdout, "H5Sselect_hyperslab.¥n");
+                        //fprintf(stdout, "H5Sselect_hyperslab.\n");
                         H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, e_offset, NULL, e_count, NULL);
 
                         // 書き込み
-                        //fprintf(stdout, "H5Dwrite.¥n");
+                        //fprintf(stdout, "H5Dwrite.\n");
                         // データ書き込み (MPI対応)
                         plist_id = H5Pcreate(H5P_DATASET_XFER);
-                        H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_INDEPENDENT);  // H5FD_MPIO_COLLECTIVE または H5FD_MPIO_INDEPENDENT
+                        // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
                         status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, memspace_id, dataspace_id, plist_id, e_value);
                         if (status < 0) {
-                            fprintf(stderr, "Error writing E data at itime=%d, ifreq=%d, nn=%d¥n", itime, ifreq, nn);
+                            fprintf(stderr, "Error writing E data at itime=%d, ifreq=%d, nn=%d\n", itime, ifreq, nn);
                         }
                         H5Pclose(plist_id);
                     }
@@ -254,10 +318,10 @@ void solve(int io, double *tdft, FILE *fp)
                         
                         // データ書き込み (MPI対応)
                         plist_id = H5Pcreate(H5P_DATASET_XFER);
-                        H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_INDEPENDENT);  // または H5FD_MPIO_INDEPENDENT
+                        // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
                         status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, memspace_id, dataspace_id, plist_id, h_value);
                         if (status < 0) {
-                            fprintf(stderr, "Error writing H data at itime=%d, ifreq=%d, nn=%d¥n", itime, ifreq, nn);
+                            fprintf(stderr, "Error writing H data at itime=%d, ifreq=%d, nn=%d\n", itime, ifreq, nn);
                         }
                         H5Pclose(plist_id);
                     }
@@ -288,8 +352,27 @@ void solve(int io, double *tdft, FILE *fp)
     // result
     if (io) {
         sprintf(str, "    --- %s ---", (converged ? "converged" : "max steps"));
-        fprintf(fp,     "%s¥n", str);
-        fprintf(stdout, "%s¥n", str);
+        fprintf(fp,     "%s\n", str);
+        fprintf(stdout, "%s\n", str);
+        fflush(fp);
+        fflush(stdout);
+    }
+
+    // TPA 検証用 : 透過率を出力 (CI が ofd.log のこの行を判定に使う)
+    // point を含むプロセスだけが測定しているので、全プロセスで最大値を取って集約する
+    // (非所有プロセスの tpaEmax は 0 なので MAX で正しい値が得られる)
+    if (tpaMon) {
+        double gmax = 0;
+        MPI_Allreduce(&tpaEmax, &gmax, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+        tpaEmax = gmax;
+    }
+    if (io && tpaMon) {
+        // I0 = (1/2) ε0 c E0^2 : 入射平面波 (真空中) の強度
+        const double i0 = 0.5 * EPS0 * C * WaveAmp * WaveAmp;
+        const double trans = (tpaEmax / WaveAmp) * (tpaEmax / WaveAmp);
+        sprintf(str, "TPA: transmission = %.6f (I0=%.6e W/m^2)", trans, i0);
+        fprintf(fp,     "%s\n", str);
+        fprintf(stdout, "%s\n", str);
         fflush(fp);
         fflush(stdout);
     }
@@ -310,7 +393,7 @@ void solve(int io, double *tdft, FILE *fp)
         hid_t metadata_group_id = H5Gcreate(file_id, "/metadata", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 
         //sprintf(str, "group_name : %s", group_name);
-        fprintf(stdout, "meta1.¥n");
+        fprintf(stdout, "meta1.\n");
 
         // 時間に関するメタデータの書き込み
         double time_metadata[1] = {Solver.maxiter * Dt};
@@ -320,7 +403,7 @@ void solve(int io, double *tdft, FILE *fp)
         dataset_id = H5Dcreate(metadata_group_id, "time", H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
         // データ書き込み (MPI対応)
         plist_id = H5Pcreate(H5P_DATASET_XFER);
-        H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_INDEPENDENT);  // または H5FD_MPIO_INDEPENDENT
+        // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
         status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, plist_id, time_metadata);
         H5Pclose(plist_id);
         H5Dclose(dataset_id);
@@ -343,19 +426,19 @@ void solve(int io, double *tdft, FILE *fp)
         //H5Sclose(dataspace_id);
 
         // Title
-        fprintf(stdout, "meta2.¥n");
+        fprintf(stdout, "meta2.\n");
         hsize_t title_dims[1] = {256};
         dataspace_id = H5Screate_simple(1, title_dims, NULL);
         dataset_id = H5Dcreate(metadata_group_id, "Title", H5T_NATIVE_CHAR, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
         // データ書き込み (MPI対応)
         plist_id = H5Pcreate(H5P_DATASET_XFER);
-        H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_INDEPENDENT);  // または H5FD_MPIO_INDEPENDENT
+        // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
         status = H5Dwrite(dataset_id, H5T_NATIVE_CHAR, H5S_ALL, H5S_ALL, plist_id, Title);
         H5Pclose(plist_id);
         H5Dclose(dataset_id);
         H5Sclose(dataspace_id);
 
-        fprintf(stdout, "meta3.¥n");
+        fprintf(stdout, "meta3.\n");
         // 各種整数型メタデータの書き込み
         struct {
             const char *name;
@@ -387,37 +470,37 @@ void solve(int io, double *tdft, FILE *fp)
             dataset_id = H5Dcreate(metadata_group_id, metadata[i].name, metadata[i].type, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
             // データ書き込み (MPI対応)
             plist_id = H5Pcreate(H5P_DATASET_XFER);
-            H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_INDEPENDENT);  // または H5FD_MPIO_INDEPENDENT
+            // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
             status = H5Dwrite(dataset_id, metadata[i].type, H5S_ALL, H5S_ALL, plist_id, metadata[i].value);
             H5Pclose(plist_id);
             H5Dclose(dataset_id);
             H5Sclose(dataspace_id);
         }
 
-        fprintf(stdout, "meta4.¥n");
+        fprintf(stdout, "meta4.\n");
         // Dtの書き込み
         dataspace_id = H5Screate(H5S_SCALAR);
         dataset_id = H5Dcreate(metadata_group_id, "Dt", H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
         plist_id = H5Pcreate(H5P_DATASET_XFER);
-        H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_INDEPENDENT);  // または H5FD_MPIO_INDEPENDENT
+        // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
         status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, plist_id, &Dt);
         H5Pclose(plist_id);
         H5Dclose(dataset_id);
         H5Sclose(dataspace_id);
 
-        fprintf(stdout, "meta5.¥n");
+        fprintf(stdout, "meta5.\n");
         // Planewaveの書き込み
         dataspace_id = H5Screate(H5S_SCALAR);
         dataset_id = H5Dcreate(metadata_group_id, "Planewave", H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
         // データ書き込み (MPI対応)
         plist_id = H5Pcreate(H5P_DATASET_XFER);
-        H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_INDEPENDENT);  // または H5FD_MPIO_INDEPENDENT
+        // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
         status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, plist_id, &Planewave);
         H5Pclose(plist_id);
         H5Dclose(dataset_id);
         H5Sclose(dataspace_id);
 
-        fprintf(stdout, "meta6.¥n");
+        fprintf(stdout, "meta6.\n");
         // 配列データの書き込み
         struct {
             const char *name;
@@ -441,34 +524,34 @@ void solve(int io, double *tdft, FILE *fp)
         };
 
         for (int i = 0; i < sizeof(arrays) / sizeof(arrays[0]); i++) {
-            fprintf(stdout, "meta6 1(%d)(%s).¥n", i, arrays[i].name);
+            fprintf(stdout, "meta6 1(%d)(%s).\n", i, arrays[i].name);
             hsize_t array_dims[1] = {arrays[i].size};
             dataspace_id = H5Screate_simple(1, array_dims, NULL);
             dataset_id = H5Dcreate(metadata_group_id, arrays[i].name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 
             // データ書き込み (MPI対応)
             plist_id = H5Pcreate(H5P_DATASET_XFER);
-            H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_INDEPENDENT);  // または H5FD_MPIO_INDEPENDENT
+            // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
             status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, plist_id, arrays[i].data);
             H5Pclose(plist_id);
             H5Dclose(dataset_id);
             H5Sclose(dataspace_id);
         }
         
-        fprintf(stdout, "meta7.¥n");
+        fprintf(stdout, "meta7.\n");
         // Surfaceデータの書き込み
         dataspace_id = H5Screate(H5S_SCALAR);
         dataset_id = H5Dcreate(metadata_group_id, "NSurface", H5T_NATIVE_INT, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
         
         // データ書き込み (MPI対応)
         plist_id = H5Pcreate(H5P_DATASET_XFER);
-        H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_INDEPENDENT);  // または H5FD_MPIO_INDEPENDENT
+        // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
         status = H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, plist_id, &NSurface);
         H5Pclose(plist_id);
         H5Dclose(dataset_id);
         H5Sclose(dataspace_id);
 
-        fprintf(stdout, "meta8.¥n");
+        fprintf(stdout, "meta8.\n");
 	    // surface_t構造体に対応する複合データ型を定義
 	    hid_t memtype = H5Tcreate(H5T_COMPOUND, sizeof(surface_t));
 	    H5Tinsert(memtype, "nx", HOFFSET(surface_t, nx), H5T_NATIVE_DOUBLE);
@@ -485,32 +568,35 @@ void solve(int io, double *tdft, FILE *fp)
 
         // データ書き込み (MPI対応)
         plist_id = H5Pcreate(H5P_DATASET_XFER);
-        H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_INDEPENDENT);  // または H5FD_MPIO_INDEPENDENT
+        // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
         status = H5Dwrite(dataset_id, memtype, H5S_ALL, H5S_ALL, plist_id, Surface);
         H5Pclose(plist_id);
         H5Dclose(dataset_id);
         H5Sclose(dataspace_id);
 
-        fprintf(stdout, "meta9.¥n");
+        fprintf(stdout, "meta9.\n");
         // メタデータグループのクローズ
         H5Gclose(metadata_group_id);
         
-        fprintf(stdout, "meta10.¥n");
+        fprintf(stdout, "meta10.\n");
     }
 
     // グループ作成後の同期
     MPI_Barrier(MPI_COMM_WORLD);
 
-    // キャッシュをフラッシュする
-    status = H5Fflush(file_id, H5F_SCOPE_GLOBAL);
-    if (status < 0) {
-        fprintf(stderr, "Error H5Fflush¥n");
-    }
+    // ファイルを開いたのは rank 0 だけなので、フラッシュとクローズも rank 0 だけが行う
+    // (直列ドライバなので集団操作ではない)
+    if (commRank == 0) {
+        // キャッシュをフラッシュする
+        status = H5Fflush(file_id, H5F_SCOPE_GLOBAL);
+        if (status < 0) {
+            fprintf(stderr, "Error H5Fflush\n");
+        }
 
-    //MPI 用に対応しているため
-    status = H5Fclose(file_id);
-    if (status < 0) {
-        fprintf(stderr, "Error H5Fclose¥n");
+        status = H5Fclose(file_id);
+        if (status < 0) {
+            fprintf(stderr, "Error H5Fclose\n");
+        }
     }
 
     // free
@@ -546,7 +632,7 @@ void solve(int io, double *tdft, FILE *fp)
 static void setup_cuda_mpi()
 {
     size_t size;
-    //printf("%d %d %d %d %d %d %d %d¥n", commSize, commRank, bid.numhy_x, bid.numhz_x, bid.numhz_y, bid.numhx_y, bid.numhx_z, bid.numhy_z); fflush(stdout);
+    //printf("%d %d %d %d %d %d %d %d\n", commSize, commRank, bid.numhy_x, bid.numhz_x, bid.numhz_y, bid.numhx_y, bid.numhx_z, bid.numhy_z); fflush(stdout);
 
     // X boundary
     size = Bid.numhy_x * sizeof(real_t);
