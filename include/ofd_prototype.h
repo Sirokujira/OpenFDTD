@@ -122,6 +122,9 @@ extern void        comm_point(void);
 extern void        comm_X(int);
 extern void        comm_Y(int);
 extern void        comm_Z(int);
+extern void        comm_E_X(void);
+extern void        comm_E_Y(void);
+extern void        comm_E_Z(void);
 extern void        mpi_init(int, char **);
 extern void        mpi_close(void);
 

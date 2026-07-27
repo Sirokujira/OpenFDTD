@@ -251,6 +251,9 @@ void setup_host()
 	}
 	h_Param.ai = (real_t)Planewave.ai;
 	h_Param.dt = (real_t)Dt;
+	// CW 波源 (waveamp キー) : 0 なら既定のガウス微分パルス
+	h_Param.waveAmp   = (real_t)WaveAmp;
+	h_Param.waveOmega = (real_t)WaveOmega;
 
 	// mesh (real_t)
 

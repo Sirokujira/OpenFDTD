@@ -289,6 +289,7 @@ if (WITH_CUDA)
                 ${CMAKE_SOURCE_DIR}/cuda/updateHx.cu
                 ${CMAKE_SOURCE_DIR}/cuda/updateHy.cu
                 ${CMAKE_SOURCE_DIR}/cuda/updateHz.cu
+                ${CMAKE_SOURCE_DIR}/cuda/updateTpa.cu
                 ${CMAKE_SOURCE_DIR}/cuda/vpoint.cu
             )
             #reduction_sum.cu
@@ -382,7 +383,8 @@ else()
             ${CMAKE_SOURCE_DIR}/sol/setupMurHx.c
             ${CMAKE_SOURCE_DIR}/sol/setupMurHy.c
             ${CMAKE_SOURCE_DIR}/sol/setupMurHz.c
-            ${CMAKE_SOURCE_DIR}/sol/setupNear.c_
+            # setupNear.c は呼び出し元がなく、削除済みグローバル Fnorm を参照するため
+            # CPU (REMOVE_ITEM) / CUDA (SOURCES2) と同様にここでも除外する
             ${CMAKE_SOURCE_DIR}/sol/setupPml.c
             ${CMAKE_SOURCE_DIR}/sol/setupPmlEx.c
             ${CMAKE_SOURCE_DIR}/sol/setupPmlEy.c
@@ -397,6 +399,7 @@ else()
             ${CMAKE_SOURCE_DIR}/sol/updateHx.c
             ${CMAKE_SOURCE_DIR}/sol/updateHy.c
             ${CMAKE_SOURCE_DIR}/sol/updateHz.c
+            ${CMAKE_SOURCE_DIR}/sol/updateTpa.c
             ${CMAKE_SOURCE_DIR}/sol/utils.c
             ${CMAKE_SOURCE_DIR}/sol/vfeed.c
             ${CMAKE_SOURCE_DIR}/sol/vpoint.c

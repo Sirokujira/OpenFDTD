@@ -18,6 +18,9 @@ typedef struct {
 	int     iMin, iMax, jMin, jMax, kMin, kMax;
 	int     NFeed, IPlanewave;
 	real_t  ei[3], hi[3], r0[3], ri[3], ai, dt;
+	// CW 波源 (waveamp キー)。0 なら既定のガウス微分パルス。
+	// finc_cuda() がこれを見て波形を切り替える (CPU 版 finc.h と同じ)。
+	real_t  waveAmp, waveOmega;
 } param_t;
 
 EXTERN int          GPU;

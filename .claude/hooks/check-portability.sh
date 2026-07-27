@@ -15,7 +15,8 @@ status=0
 #
 # 判定 : CMakeLists.txt に "sol/<name>" の記載が無く、cuda/<stem>.cu も
 #        mpi/<stem>.c も無く、CPU 専用として文書化された除外でもないもの。
-cpu_only="updateTpa.c"          # tpa (二光子吸収) は CPU のみ (README に明記済み)
+# 一部の実装だけ対応することを文書化済みのファイル (README の対応状況表を参照)
+cpu_only=""
 for f in "$root"/sol/*.c; do
 	[ -e "$f" ] || continue
 	n=$(basename "$f")

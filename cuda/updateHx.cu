@@ -57,7 +57,7 @@ static void updateHx_p_vector(
 	}
 	else {
 		real_t fi, dfi;
-		finc_cuda(x, y, z, t, p->r0, p->ri, p->hi[0], p->ai, p->dt, &fi, &dfi);
+		finc_cuda_cw(x, y, z, t, p->r0, p->ri, p->hi[0], p->ai, p->dt, p->waveAmp, p->waveOmega, &fi, &dfi);
 		if (m == PEC) {
 			hx[n] = -fi;
 		}
@@ -89,7 +89,7 @@ static void updateHx_p_no_vector(
 	}
 	else {
 		real_t fi, dfi;
-		finc_cuda(x, y, z, t, p->r0, p->ri, p->hi[0], p->ai, p->dt, &fi, &dfi);
+		finc_cuda_cw(x, y, z, t, p->r0, p->ri, p->hi[0], p->ai, p->dt, p->waveAmp, p->waveOmega, &fi, &dfi);
 		if (m == PEC) {
 			hx[n] = -fi;
 		}

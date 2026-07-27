@@ -23,7 +23,8 @@ paths:
 
 `.claude/rules/build-targets.md` を必ず読むこと。CPU (`sol/`) にだけ追加した
 機能は **README に CUDA/MPI の対応状況を明記する**。
-現状: `tpa` (二光子吸収) は CPU のみ、CUDA 未対応。
+現状: `tpa` (二光子吸収) と `waveamp` (CW 波源) は CPU / MPI / CUDA 対応済み。
+`ofd_cuda_mpi` (CUDA+MPI) のみ未対応。熱解析レイヤは CPU (`sol/solve.c`) のみ。
 
 ## 検証ケース (新機能には必須)
 

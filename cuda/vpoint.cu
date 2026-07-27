@@ -30,7 +30,7 @@ static void vpoint_(
 		e = ex[LA(p, i, j, k)];
 		d = point.dx;
 		if (p->IPlanewave) {
-			finc_cuda(xc[i], yn[j], zn[k], t, p->r0, p->ri, p->ei[0], p->ai, p->dt, &einc, &dummy);
+			finc_cuda_cw(xc[i], yn[j], zn[k], t, p->r0, p->ri, p->ei[0], p->ai, p->dt, p->waveAmp, p->waveOmega, &einc, &dummy);
 		}
 	}
 	else if ((point.dir == 'Y') &&
@@ -40,7 +40,7 @@ static void vpoint_(
 		e = ey[LA(p, i, j, k)];
 		d = point.dy;
 		if (p->IPlanewave) {
-			finc_cuda(xn[i], yc[j], zn[k], t, p->r0, p->ri, p->ei[1], p->ai, p->dt, &einc, &dummy);
+			finc_cuda_cw(xn[i], yc[j], zn[k], t, p->r0, p->ri, p->ei[1], p->ai, p->dt, p->waveAmp, p->waveOmega, &einc, &dummy);
 		}
 	}
 	else if ((point.dir == 'Z') &&
@@ -50,7 +50,7 @@ static void vpoint_(
 		e = ez[LA(p, i, j, k)];
 		d = point.dz;
 		if (p->IPlanewave) {
-			finc_cuda(xn[i], yn[j], zc[k], t, p->r0, p->ri, p->ei[2], p->ai, p->dt, &einc, &dummy);
+			finc_cuda_cw(xn[i], yn[j], zc[k], t, p->r0, p->ri, p->ei[2], p->ai, p->dt, p->waveAmp, p->waveOmega, &einc, &dummy);
 		}
 	}
 
