@@ -116,6 +116,24 @@ CUDA / MPI で TPA を使いたい場合は、`cuda/updateTpa.cu` (E 更新後�
 `setupTpa()` / `updateTpa(t)` の呼び出しと `sol/updateTpa.c` のビルド追加を
 行えば領域分割によらず同じ結果になる見込みですが、**未実装・未検証**です。
 
+#### MPI 版のビルドと実行
+
+`ofd_mpi` は逐次 HDF5 (`libhdf5-dev`) と MPI 実装があればビルドできます。
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DWITH_MPI=ON -DWITH_CUDA=OFF
+cmake --build build -j"$(nproc)"
+mpirun -n 2 bin/ofd_mpi dipole.ofd     # 逐次版と同じ収束履歴・インピーダンス
+```
+
+dipole サンプルで 2 / 4 プロセスとも逐次版 (`ofd`) と収束履歴・入力
+インピーダンス表が完全一致することを確認しています。
+
+時系列 HDF5 (`time_series_data.h5`) の書き出しは rank 0 のみが行うため、
+**MPI 実行では rank 0 の担当領域のみが記録されます** (領域分割された
+全体場ではありません)。ログ・インピーダンス・遠方界など通常の出力は
+全プロセスの結果を集約しており逐次版と一致します。
+
 ## ビルド
 
 必要環境: C99 コンパイラ / CMake 3.18+ / libhdf5

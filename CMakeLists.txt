@@ -386,7 +386,10 @@ else()
             ${CMAKE_SOURCE_DIR}/sol/setupMurHx.c
             ${CMAKE_SOURCE_DIR}/sol/setupMurHy.c
             ${CMAKE_SOURCE_DIR}/sol/setupMurHz.c
-            ${CMAKE_SOURCE_DIR}/sol/setupNear.c_
+            # setupNear.c は呼び出し元がなく削除済みグローバル Fnorm を参照するため
+            # 全ビルドから除外する (CPU: 96 行, CUDA: SOURCES2 でも除外済み)。
+            # 存在しないファイル名 setupNear.c_ が残っており、CMake が
+            # "Cannot find source file" で configure に失敗していた。
             ${CMAKE_SOURCE_DIR}/sol/setupPml.c
             ${CMAKE_SOURCE_DIR}/sol/setupPmlEx.c
             ${CMAKE_SOURCE_DIR}/sol/setupPmlEy.c
@@ -468,6 +471,12 @@ if (WITH_POST)
 
     #target_link_libraries(ofd_post PRIVATE OpenMP::OpenMP_C m)
     target_link_libraries(ofd_post PRIVATE OpenMP::OpenMP_C ${MATH_LIB} HDF5::HDF5)
+
+    # 並列 HDF5 (MPI ビルド時) では H5public.h が <mpi.h> を include するため、
+    # ofd_post 自体は逐次実行でも MPI のインクルードパスが必要になる。
+    if(WITH_MPI AND MPI_C_FOUND)
+        target_link_libraries(ofd_post PRIVATE MPI::MPI_C)
+    endif()
 
 endif()
 
