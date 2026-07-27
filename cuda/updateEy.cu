@@ -57,7 +57,7 @@ static void updateEy_p_vector(
 	}
 	else {
 		real_t fi, dfi;
-		finc_cuda(x, y, z, t, p->r0, p->ri, p->ei[1], p->ai, p->dt, &fi, &dfi);
+		finc_cuda_cw(x, y, z, t, p->r0, p->ri, p->ei[1], p->ai, p->dt, p->waveAmp, p->waveOmega, &fi, &dfi);
 		if (m == PEC) {
 			ey[n] = -fi;
 		}
@@ -89,7 +89,7 @@ static void updateEy_p_no_vector(
 	}
 	else {
 		real_t fi, dfi;
-		finc_cuda(x, y, z, t, p->r0, p->ri, p->ei[1], p->ai, p->dt, &fi, &dfi);
+		finc_cuda_cw(x, y, z, t, p->r0, p->ri, p->ei[1], p->ai, p->dt, p->waveAmp, p->waveOmega, &fi, &dfi);
 		if (m == PEC) {
 			ey[n] = -fi;
 		}

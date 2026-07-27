@@ -57,7 +57,7 @@ static void updateHz_p_vector(
 	}
 	else {
 		real_t fi, dfi;
-		finc_cuda(x, y, z, t, p->r0, p->ri, p->hi[2], p->ai, p->dt, &fi, &dfi);
+		finc_cuda_cw(x, y, z, t, p->r0, p->ri, p->hi[2], p->ai, p->dt, p->waveAmp, p->waveOmega, &fi, &dfi);
 		if (m == PEC) {
 			hz[n] = -fi;
 		}
@@ -89,7 +89,7 @@ static void updateHz_p_no_vector(
 	}
 	else {
 		real_t fi, dfi;
-		finc_cuda(x, y, z, t, p->r0, p->ri, p->hi[2], p->ai, p->dt, &fi, &dfi);
+		finc_cuda_cw(x, y, z, t, p->r0, p->ri, p->hi[2], p->ai, p->dt, p->waveAmp, p->waveOmega, &fi, &dfi);
 		if (m == PEC) {
 			hz[n] = -fi;
 		}

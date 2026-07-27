@@ -289,6 +289,7 @@ if (WITH_CUDA)
                 ${CMAKE_SOURCE_DIR}/cuda/updateHx.cu
                 ${CMAKE_SOURCE_DIR}/cuda/updateHy.cu
                 ${CMAKE_SOURCE_DIR}/cuda/updateHz.cu
+                ${CMAKE_SOURCE_DIR}/cuda/updateTpa.cu
                 ${CMAKE_SOURCE_DIR}/cuda/vpoint.cu
             )
             #reduction_sum.cu

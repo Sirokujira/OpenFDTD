@@ -19,7 +19,7 @@ static void dispersion(
 	real_t fi = 0;
 	if (p->IPlanewave) {
 		real_t dfi;
-		finc_cuda(x, y, z, t, p->r0, p->ri, p->ei[1], p->ai, p->dt, &fi, &dfi);
+		finc_cuda_cw(x, y, z, t, p->r0, p->ri, p->ei[1], p->ai, p->dt, p->waveAmp, p->waveOmega, &fi, &dfi);
 	}
 
 	e[n] += me->f1 * (*de);

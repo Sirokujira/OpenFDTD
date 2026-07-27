@@ -57,7 +57,7 @@ static void updateEz_p_vector(
 	}
 	else {
 		real_t fi, dfi;
-		finc_cuda(x, y, z, t, p->r0, p->ri, p->ei[2], p->ai, p->dt, &fi, &dfi);
+		finc_cuda_cw(x, y, z, t, p->r0, p->ri, p->ei[2], p->ai, p->dt, p->waveAmp, p->waveOmega, &fi, &dfi);
 		if (m == PEC) {
 			ez[n] = -fi;
 		}
@@ -89,7 +89,7 @@ static void updateEz_p_no_vector(
 	}
 	else {
 		real_t fi, dfi;
-		finc_cuda(x, y, z, t, p->r0, p->ri, p->ei[2], p->ai, p->dt, &fi, &dfi);
+		finc_cuda_cw(x, y, z, t, p->r0, p->ri, p->ei[2], p->ai, p->dt, p->waveAmp, p->waveOmega, &fi, &dfi);
 		if (m == PEC) {
 			ez[n] = -fi;
 		}

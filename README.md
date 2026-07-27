@@ -82,7 +82,7 @@ sh data/sample/tpa_slab_check.sh /path/to/bin/ofd /tmp/tpa
 |---|---|---|
 | CPU (`ofd`) | 対応 | CI (3 OS) で解析解 ±7% を判定 |
 | MPI (`ofd_mpi`) | 対応 | 7 通りの領域分割で CPU 版と完全一致を確認済み |
-| CUDA (`ofd_cuda`) | **未対応** | `cuda/updateTpa.cu` が無い。CUDA ビルドでは TPA が適用されない |
+| CUDA (`ofd_cuda`) | 対応 | `-cpu` 実行で解析解 3 点合格。GPU カーネルは nvcc でコンパイル検証のみ (実機 GPU 未検証) |
 
 MPI 版では `updateTpa` が `|E|²` の colocated 近似のために隣接セルの E 成分を
 読むため、領域分割時は E のハローを交換してから適用します (`mpi/comm_E.c`)。
@@ -101,8 +101,22 @@ MPI 版では `updateTpa` が `|E|²` の colocated 近似のために隣接セ�
 MPI 2 プロセスでの解析解検証も CPU 版と同じ誤差 (−0.30% / −0.98% / +1.57%) で
 3 点とも合格します。
 
-MPI 版で TPA を使うには**並列 MPI ビルド用の HDF5 は不要**です
-(下記「MPI ビルド」参照)。
+CUDA 版では `waveamp` の CW 波源も同時に対応しました。`include/finc_cuda.h` は
+ガウス微分パルスしか実装しておらず、CW 波源 (TPA と同時に追加された機能) が
+GPU 側へ反映されていなかったためです。CW パラメータは `param_t` の
+`waveAmp` / `waveOmega` 経由でデバイスへ渡します。
+
+CUDA 版の検証は `ofd_cuda -cpu` (GPU を使わない実行モード) で行っています。
+セル毎の演算は `__host__ __device__` の共通関数なので GPU カーネルと同じ式を
+通りますが、**カーネル起動構成と実機 GPU での実行は未検証**です
+(この環境に GPU が無いため。nvcc によるコンパイル・リンクは通っています)。
+
+| 実行 | 透過率 |
+|---|---|
+| CPU (`ofd`) | 0.646848 |
+| CUDA (`ofd_cuda -cpu`) | 0.646838 (差 0.0015%、`real_t`=float の精度差) |
+
+MPI 版で TPA を使うには**並列 MPI ビルド用の HDF5 は不要**です。
 
 ## ビルド
 
