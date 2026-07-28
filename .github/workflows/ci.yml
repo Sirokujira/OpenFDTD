@@ -19,7 +19,7 @@ on:
 jobs:
   build-cpu:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: write   # タグ push 時の Release 添付に使用
     steps:
@@ -58,6 +58,13 @@ jobs:
       - name: Validation test — thermal per-cell material
         run: sh data/sample/thermal_material_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-thermal
 
+      # 平面波励振 : 完全導体球の散乱断面積を Mie 厳密解と比較する。
+      # 平面波の波源設定が壊れると断面積が 0 や NaN になるが "normal end" では
+      # 終わるため、スモークテストでは検出できない (実際に長期間見逃していた)。
+      # 2 分ほどかかるので Linux ジョブのみで実行する。
+      - name: Validation test — plane wave RCS (PEC sphere vs Mie)
+        run: sh data/sample/sphere_rcs_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-rcs
+
       - name: Upload binaries (artifact)
         uses: actions/upload-artifact@v4
         with:
@@ -87,6 +94,7 @@ jobs:
             /tmp/smoke/*.log
             /tmp/smoke-tpa/*.log
             /tmp/smoke-thermal/*.log
+            /tmp/smoke-rcs/*.log
           if-no-files-found: ignore
 
   # macOS (Apple Silicon)。AppleClang は OpenMP を同梱しないため、

@@ -277,8 +277,6 @@ void setup_planewave2(void)
 // plane wave
 void setup_planewave(void)
 {
-    printf("setup_planewave.\n");
-
     const double cost = cos(Planewave.theta * DTOR);
     const double sint = sin(Planewave.theta * DTOR);
     const double cosp = cos(Planewave.phi   * DTOR);
@@ -300,8 +298,6 @@ void setup_planewave(void)
     Planewave.ri[0] = - r1[0];
     Planewave.ri[1] = - r1[1];
     Planewave.ri[2] = - r1[2];
-    printf("propagation vector.\n");
-    printf("%.10f %.10f %.10f\n", Planewave.r0[0], Planewave.r0[1], Planewave.r0[2]);
 
     // E
     if      (Planewave.pol == 1) {
@@ -316,35 +312,36 @@ void setup_planewave(void)
         Planewave.ei[1] = + p1[1];
         Planewave.ei[2] = + p1[2];
     }
-    printf("E.\n");
-    printf("%.10f %.10f %.10f\n", Planewave.ei[0], Planewave.ei[1], Planewave.ei[2]);
 
     // H = E X r
     Planewave.hi[0] = (Planewave.ei[1] * r1[2]) - (Planewave.ei[2] * r1[1]);
     Planewave.hi[1] = (Planewave.ei[2] * r1[0]) - (Planewave.ei[0] * r1[2]);
     Planewave.hi[2] = (Planewave.ei[0] * r1[1]) - (Planewave.ei[1] * r1[0]);
-    printf("H.\n");
-    printf("%.10f %.10f %.10f\n", Planewave.hi[0], Planewave.hi[1], Planewave.hi[2]);
 
     // initial position
+    // 解析領域の外側 (対角長の半分 + 半波長) に波面の基準点を置く。
+    // 全成分を計算値のまま使うこと : 以前は r0[2] を 0.5e-6 [m] に上書き
+    // していたが、これは光学サンプル向けの決め打ちで、他のスケールでは
+    // 基準点が解析領域の内部に入り遅延時間の基準が壊れる。
     const double f0 = (Freq2[0] + Freq2[NFreq2 - 1]) / 2;
     const double r = sqrt((Xn[0] - Xn[Nx]) * (Xn[0] - Xn[Nx]) +
                           (Yn[0] - Yn[Ny]) * (Yn[0] - Yn[Ny]) +
                           (Zn[0] - Zn[Nz]) * (Zn[0] - Zn[Nz])) / 2 + (0.5 * C / f0);
-    //const double r = 10;
-    printf("%.10f\n", r); // 0.000003
 
     Planewave.r0[0] = ((Xn[0] + Xn[Nx]) / 2 - (r * Planewave.ri[0]));
     Planewave.r0[1] = ((Yn[0] + Yn[Ny]) / 2 - (r * Planewave.ri[1]));
     Planewave.r0[2] = ((Zn[0] + Zn[Nz]) / 2 - (r * Planewave.ri[2]));
-    Planewave.r0[2] = 0.0000005;
-    printf("initial position.\n");
-    printf("%.10f %.10f %.10f\n", Planewave.r0[0], Planewave.r0[1], Planewave.r0[2]);
 
-    // waveform parameter(ガウス微分パルス)
-    //Planewave.ai = 4 / (1.27 / f0);
-	Planewave.ai = 4 / (1.27e-4 / f0);
-	//set_pulse_parameters();
+    // waveform parameter (ガウス微分パルス)
+    // f(t) = a t exp(-(a t)^2), a = 4 / Tw, Tw = 1.27 / f0
+    // (Tw は sol/setup.c が給電波形用に決めているパルス幅と同じ定義)
+    //
+    // 以前はここが 4 / (1.27e-4 / f0) となっており a が 10^4 倍大きかった。
+    // パルスが時間刻み Dt より遥かに細くなるため finc() は全サンプル点で
+    // (a t)^2 >= 16 となって 0 を返し、入射波が事実上存在しなくなる。
+    // その結果 sol/setupDft.c の正規化係数 cFdft (波源のスペクトル) が 0 に
+    // なり、近傍界 DFT が 0 除算で NaN、散乱断面積は恒等的に 0 になっていた。
+    Planewave.ai = 4 / (1.27 / f0);
 }
 
 
