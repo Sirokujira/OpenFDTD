@@ -71,6 +71,27 @@ sh data/sample/thermal_material_check.sh /path/to/bin/ofd /tmp/thermal
 - 出力ステップ毎の `/dataNNNNNN` は大容量 (dipole サンプルで ~50MB)。
   不要な場合は該当ブロックを無効化してください
 
+### 平面波励振の検証 (完全導体球 RCS)
+
+平面波入射の散乱断面積を、完全導体球の Mie 厳密解と比較します
+(`data/sample/sphere_rcs.ofd` + `data/sample/sphere_rcs_check.sh`)。
+
+```sh
+sh data/sample/sphere_rcs_check.sh /path/to/bin/ofd /tmp/rcs
+```
+
+半径 a = 0.05 m、ka = 3.0 の完全導体球に対し、Mie 級数から
+後方 σ = 4.0901e-03 m²、前方 σ = 8.4797e-02 m² が期待値です。
+球を直交格子で階段近似するため厳密一致はせず、実測比は Δ=λ/25 で
+後方 1.13 / 前方 1.37 (Δ=λ/20 では 1.41 / 1.45 で、細かくすると Mie 解へ
+近づく)。判定は 0.625〜1.6 倍と広めに取っています。
+
+この検証を入れたのは、**平面波の波源設定が壊れると断面積が 0 や NaN になる
+一方でログは `normal end` で終わる**ためです (実際に、ガウス微分パルスの幅
+パラメータが 10⁴ 倍大きく入射波が事実上存在しない状態が長期間続き、
+全周波数帯の平面波サンプルの断面積が恒等的に 0 になっていました)。
+近傍界 DFT の正規化係数が 0 になる場合は `sol/setupDft.c` がエラーで停止します。
+
 ### 二光子吸収 (TPA) 非線形材料
 
 メタマテリアル装荷 Si 導波路の光活性化関数
@@ -188,7 +209,9 @@ grep "normal end" ofd.log
 - push / PR ごとに次の 5 ジョブを実行する
   - `build-cpu` / `build-macos` / `build-windows` — Linux (gcc) / macOS
     (AppleClang) / Windows (MSVC) で CPU ビルド + dipole サンプルの
-    スモーク実行 (`normal end` 判定) + TPA スラブ検証 (解析解 ±7% 判定)
+    スモーク実行 (`normal end` 判定) + TPA スラブ検証 (解析解 ±7% 判定)。
+    Linux / macOS では熱解析のセル毎材料検証、Linux ではさらに
+    平面波散乱の Mie 検証 (完全導体球 RCS) を実行
   - `build-mpi` — `ofd_mpi` をビルドし、dipole の 1/2 プロセス一致、
     TPA の領域分割不変性 (5 通り)、2 プロセスでの解析解を判定
   - `build-cuda` — `ofd_cuda` と `ofd_cuda_mpi` を nvcc でビルドし、

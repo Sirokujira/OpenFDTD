@@ -36,6 +36,20 @@ void setupDft(void)
 			csum = d_add(csum, d_rmul(fi, d_exp(-phase)));
 		}
 		cFdft[ifreq] = csum;
+
+		// 正規化係数が 0 だと以下の除算で inf/NaN になり、近傍界 DFT が
+		// 静かに壊れる (ログは正常終了し、散乱断面積などが 0 や NaN になる)。
+		// 波源のスペクトルがその周波数に乗っていないという入力の問題なので、
+		// ここで止めて原因を告げる。
+		if (d_abs(cFdft[ifreq]) <= 0) {
+			fprintf(stderr,
+				"*** DFT normalization failed at f=%.6e Hz : "
+				"the source has no spectral content there.\n"
+				"    (check the frequency2 range against the source waveform; "
+				"a CW source can be forced with the waveamp key)\n",
+				Freq2[ifreq]);
+			exit(1);
+		}
 	}
 
 	// DFT factor
