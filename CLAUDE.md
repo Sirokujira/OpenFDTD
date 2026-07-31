@@ -1,8 +1,12 @@
 # OpenFDTD
 
 3 次元 FDTD 電磁界ソルバー (C)。OpenFDTD-X (GUI) から QProcess で起動される
-処理カーネル。**CPU (OpenMP) / MPI / CUDA の 3 実装**を持ち、
+処理カーネル。**CPU (OpenMP) / MPI / CUDA / CUDA+MPI の 4 実装**を持ち、
 後処理は別バイナリ `ofd_post` が同じ .ofd を読んで行う。
+
+**`AGENTS.md`** に同じ規約を単独で読める形でまとめてある (Codex 等、
+`CLAUDE.md` / `.claude/rules/` を読まないエージェント向け)。
+**規約を変えたら両方直すこと。**
 
 ## ビルド / テスト
 
@@ -18,8 +22,10 @@ cmake --build build -j"$(nproc)"
 mkdir -p /tmp/smoke && cp data/sample/dipole.ofd /tmp/smoke/ && cd /tmp/smoke
 $OLDPWD/bin/ofd -n 2 dipole.ofd && grep "normal end" ofd.log
 
-# TPA 検証 (解析解 T=1/(1+βI0L) と ±7%)
-sh data/sample/tpa_slab_check.sh bin/ofd /tmp/tpa-check
+# 検証 (いずれも解析解・厳密解との比較)
+sh data/sample/tpa_slab_check.sh         bin/ofd /tmp/tpa-check      # TPA ±7%
+sh data/sample/thermal_material_check.sh bin/ofd /tmp/thermal-check  # 熱解析の材料参照
+sh data/sample/sphere_rcs_check.sh       bin/ofd /tmp/rcs-check      # 平面波 RCS vs Mie
 ```
 
 `/check` (ビルド+回帰+TPA)、`/preflight` (push 前の一括点検)、
@@ -54,8 +60,14 @@ sh data/sample/tpa_slab_check.sh bin/ofd /tmp/tpa-check
 
 ## CI
 
-`.github/workflows/ci.yml`: Linux / macOS (libomp) / Windows
-(MSVC + Ninja + vcpkg `hdf5[core,zlib]:x64-windows-static-md` —
-szip は libaec の 429 で落ちるため使わない)。
-**3 OS とも `WITH_CUDA=OFF -DWITH_MPI=OFF`** なので、CUDA/MPI ビルドは
-CI で検証されない。タグ `v*` push で Release にバイナリ添付。
+`.github/workflows/ci.yml` は 5 ジョブ:
+
+- `build-cpu` / `build-macos` (libomp) / `build-windows`
+  (MSVC + Ninja + vcpkg `hdf5[core,zlib]:x64-windows-static-md` —
+  szip は libaec の 429 で落ちるため使わない) — `ofd` / `ofd_post`
+- `build-mpi` — `ofd_mpi` (1/2 プロセス一致・分割不変性・解析解)
+- `build-cuda` — `ofd_cuda` / `ofd_cuda_mpi` (`-cpu` 実行で判定)
+
+ランナーに GPU は無いので、CUDA 版は `-cpu` 実行で物理まで判定し、
+**カーネル起動構成と実機 GPU 実行のみ未検証**。
+タグ `v*` push で Release にバイナリ添付。
