@@ -476,6 +476,56 @@ if (WITH_POST)
 
 endif()
 
+# ── ユニットテスト (CTest) ─────────────────────────────────────────
+# ソルバー本体を動かさずに検証できる純粋なロジックだけを対象にする。
+# E2E の検証 (dipole スモーク / TPA / RCS) は CI のスクリプトが担当し、
+# ここはその下の層 (波形・DFT・形状判定・複素数演算) を固定する。
+#
+# 注意 : テストは tests/ に置くこと。sol/ に .c を足すと CPU ビルドは
+# file(GLOB) で通るが CUDA (SOURCES2) / MPI (SOURCES3) は手書きリストなので
+# 静かにリンクエラーになる (.claude/rules/build-targets.md)。
+#
+# 対象にしているのは ofd.h のグローバル状態を必要としない翻訳単位のみ:
+#   sol/utils.c sol/vfeed.c sol/ingeometry.c sol/geomlines.c
+#   include/complex.h include/finc.h (ヘッダ内 static inline)
+option(WITH_TESTS "Build unit tests (CTest)" ON)
+if (WITH_TESTS)
+    enable_testing()
+
+    set(TEST_SOURCES
+        ${CMAKE_SOURCE_DIR}/tests/test_main.c
+        ${CMAKE_SOURCE_DIR}/tests/test_complex.c
+        ${CMAKE_SOURCE_DIR}/tests/test_finc.c
+        ${CMAKE_SOURCE_DIR}/tests/test_utils.c
+        ${CMAKE_SOURCE_DIR}/tests/test_vfeed.c
+        ${CMAKE_SOURCE_DIR}/tests/test_ingeometry.c
+        ${CMAKE_SOURCE_DIR}/tests/test_geomlines.c
+    )
+
+    # テスト対象の実装 (グローバル状態に依存しない自己完結した翻訳単位)
+    set(TEST_TARGET_SOURCES
+        ${CMAKE_SOURCE_DIR}/sol/utils.c
+        ${CMAKE_SOURCE_DIR}/sol/vfeed.c
+        ${CMAKE_SOURCE_DIR}/sol/ingeometry.c
+        ${CMAKE_SOURCE_DIR}/sol/geomlines.c
+    )
+
+    add_executable(ofd_tests ${TEST_SOURCES} ${TEST_TARGET_SOURCES})
+    if(MSVC)
+        target_link_options(ofd_tests PRIVATE /STACK:16777216)
+    endif()
+    target_include_directories(ofd_tests PUBLIC
+        "${PROJECT_SOURCE_DIR}/include"
+        "${PROJECT_SOURCE_DIR}/tests")
+    target_link_libraries(ofd_tests PRIVATE ${MATH_LIB})
+
+    # テスト名は tests/test_main.c のテーブルと対応している。
+    # 1 件ずつ add_test することで、どれが落ちたか CTest の出力で分かる。
+    foreach(t complex finc utils vfeed ingeometry geomlines)
+        add_test(NAME ${t} COMMAND ofd_tests ${t})
+    endforeach()
+endif()
+
 #option(WITH_TOOL "Enable Convert Tool" ON)
 #if (WITH_TOOL)
 #    # Siloライブラリを探す

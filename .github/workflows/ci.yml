@@ -36,6 +36,11 @@ jobs:
       - name: Build ofd / ofd_post
         run: cmake --build build -j"$(nproc)"
 
+      # ユニットテスト : ソルバーを動かさずに検証できる純粋なロジック
+      # (波形・DFT・形状判定・複素数演算)。E2E のスモーク/検証より下の層。
+      - name: Unit tests (CTest)
+        run: ctest --test-dir build --output-on-failure
+
       - name: Smoke test — solver (dipole sample)
         run: |
           mkdir -p /tmp/smoke && cp data/sample/dipole.ofd /tmp/smoke/
@@ -123,6 +128,9 @@ jobs:
       - name: Build ofd / ofd_post
         run: cmake --build build -j"$(sysctl -n hw.ncpu)"
 
+      - name: Unit tests (CTest)
+        run: ctest --test-dir build --output-on-failure
+
       - name: Smoke test — solver (dipole sample)
         run: |
           mkdir -p /tmp/smoke && cp data/sample/dipole.ofd /tmp/smoke/
@@ -201,6 +209,11 @@ jobs:
 
       - name: Build ofd / ofd_post
         run: cmake --build build
+
+      # MSVC でのみ現れる移植性の問題 (VLA / OpenMP index / float*・double*)
+      # をユニットテストの層でも捕まえる
+      - name: Unit tests (CTest)
+        run: ctest --test-dir build --output-on-failure
 
       - name: Smoke test — solver (dipole sample)
         run: |
@@ -291,6 +304,11 @@ jobs:
 
       - name: Build ofd_mpi / ofd_post
         run: cmake --build build-mpi -j"$(nproc)"
+
+      # MPI 構成でもユニットテストの対象はグローバル状態に依存しない
+      # 純粋なロジックなので、同じ結果になることを確認する
+      - name: Unit tests (CTest)
+        run: ctest --test-dir build-mpi --output-on-failure
 
       # 1 プロセスと 2 プロセスで結果が完全一致すること
       # (dipole は TPA を使わないので、並列化そのものの回帰検出になる)
