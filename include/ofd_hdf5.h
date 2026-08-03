@@ -73,11 +73,30 @@ extern "C" {
    部分領域しか持たないため、瞬時値スナップショットを出せない) */
 int  hdf5_open(int with_timeseries);
 
+/* このステップでスナップショットを出すか (hdf5 キーの output / interval)。
+   MPI では全ランクが同じ答を返すので、集約の通信をこの判定で括ってよい。 */
+int  hdf5_snapshot_enabled(int itime);
+
 /* 瞬時値スナップショットを /timeseries に追記する (時間ループ内)。
-   ex..hz はソルバー内部の 1 次元配列 (NA(i,j,k) で添字付け)。 */
+   ex..hz はソルバー内部の 1 次元配列 (NA(i,j,k) で添字付け)。
+   全域を 1 プロセスで持っている CPU / CUDA 版はこれを使う。 */
 void hdf5_write_snapshot(int itime, double t,
 	const real_t *ex, const real_t *ey, const real_t *ez,
 	const real_t *hx, const real_t *hy, const real_t *hz);
+
+/* 逐次ストリーミング集約 (MPI 版)。
+   rank 0 が全域配列を抱えずに済むよう、begin -> put を繰り返す -> commit の
+   形で少しずつ出力バッファへ書き込む。保持するのは出力と同じ
+   (Nx+1)(Ny+1)(Nz+1)*3 の 2 本だけ。
+     field : 0 = E, 1 = H
+     comp  : 0 = x, 1 = y, 2 = z
+     src   : src[(ni*i) + (nj*j) + (nk*k) + n0] で引ける配列
+             (ソルバーのローカル配列でも、受信した箱でも同じ形で渡せる) */
+int  hdf5_snapshot_begin(void);
+void hdf5_snapshot_put(int field, int comp,
+	int i0, int i1, int j0, int j1, int k0, int k1,
+	const real_t *src, int64_t ni, int64_t nj, int64_t nk, int64_t n0);
+void hdf5_snapshot_commit(int itime, double t);
 
 /* 周波数領域の最終結果を /freqdomain に書く (時間ループ後)。
    MPI では comm_near3d() で全域に集約した g_c* を渡すこと。 */

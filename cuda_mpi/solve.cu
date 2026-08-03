@@ -248,14 +248,9 @@ void solve(int io, double *tdft, FILE *fp)
             // HDF5 : 瞬時値スナップショット
             // comm_snapshot() は全ランクが参加する集団操作なので、
             // io (= rank 0 か) の条件の外で呼ぶこと (mpi/solve.c と同じ)。
-            if (Hdf5Output) {
+            if (hdf5_snapshot_enabled(itime)) {
                 if (GPU) cudaDeviceSynchronize();
-                comm_snapshot();
-                if (commRank == 0) {
-                    setupSize(1, 1, 1, 0);
-                    hdf5_write_snapshot(itime, t, g_Ex, g_Ey, g_Ez, g_Hx, g_Hy, g_Hz);
-                    setupSize(Npx, Npy, Npz, commRank);
-                }
+                comm_snapshot(itime, t);
             }
 
             // check convergence
