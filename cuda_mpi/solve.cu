@@ -8,6 +8,7 @@ solve.cu (CUDA + MPI)
 #include "finc.h"      // TPA 検証用の透過率測定で入射波形 finc() を使う (ofd.h の後)
 
 #include "hdf5.h"
+#include "ofd_hdf5.h"
 #include <mpi.h>
 #include <limits.h>
 #define FILE_NAME "time_series_data.h5"
@@ -73,7 +74,7 @@ void solve(int io, double *tdft, FILE *fp)
     hid_t plist_id;
     file_id = -1;
     if (commRank == 0) {
-        file_id = H5Fcreate(FILE_NAME, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+        hdf5_open(0);
     }
 
     // time step iteration
@@ -250,87 +251,7 @@ void solve(int io, double *tdft, FILE *fp)
                 // グループの作成前に同期
                 //MPI_Barrier(MPI_COMM_WORLD);
 
-                // 各時間ステップごとにグループを作成
-                char group_name[32];
-                snprintf(group_name, sizeof(group_name), "/data%06d", itime);
-                group_id = H5Gcreate(file_id, group_name, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-                //sprintf(str, "group_name : %s", group_name);
-                //fprintf(stdout, "%s\n", str);
-
-                // Eフィールドデータセットの作成と書き込み
-                hsize_t e_dims[4] = {1, NFreq2, NN, 6};
-                dataspace_id = H5Screate_simple(4, e_dims, NULL);
-                dataset_id = H5Dcreate(group_id, "E", H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-
-                // 書き込み用のメモリスペースを修正
-                hsize_t mem_dims[1] = {6};
-                memspace_id = H5Screate_simple(1, mem_dims, NULL);
-
-                //sprintf(str, "NFreq2 : %d", NFreq2);
-                //fprintf(stdout, "%s\n", str);
-
-                for (int ifreq = 0; ifreq < NFreq2; ifreq++) {
-                    int64_t n0 = ifreq * NN;
-                    for (int nn = 0; nn < NN; nn++) {
-                        //fprintf(stdout, "set e_value.\n");
-
-                        double e_value[6] = {
-                            cEx_r[n0 + nn], cEy_r[n0 + nn], cEz_r[n0 + nn],
-                            cEx_i[n0 + nn], cEy_i[n0 + nn], cEz_i[n0 + nn]
-                        };
-
-                        hsize_t e_offset[4] = {0, ifreq, nn, 0};
-                        hsize_t e_count[4] = {1, 1, 1, 6};
-                        //fprintf(stdout, "H5Sselect_hyperslab.\n");
-                        H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, e_offset, NULL, e_count, NULL);
-
-                        // 書き込み
-                        //fprintf(stdout, "H5Dwrite.\n");
-                        // データ書き込み (MPI対応)
-                        plist_id = H5Pcreate(H5P_DATASET_XFER);
-                        // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
-                        status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, memspace_id, dataspace_id, plist_id, e_value);
-                        if (status < 0) {
-                            fprintf(stderr, "Error writing E data at itime=%d, ifreq=%d, nn=%d\n", itime, ifreq, nn);
-                        }
-                        H5Pclose(plist_id);
-                    }
-                }
-                H5Dclose(dataset_id);
-                H5Sclose(dataspace_id);
-
-                // Hフィールドデータセットの作成と書き込み
-                hsize_t h_dims[4] = {1, NFreq2, NN, 6};
-                dataspace_id = H5Screate_simple(4, h_dims, NULL);
-                dataset_id = H5Dcreate(group_id, "H", H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-
-                for (int ifreq = 0; ifreq < NFreq2; ifreq++) {
-                    int64_t n0 = ifreq * NN;
-                    for (int nn = 0; nn < NN; nn++) {
-                        double h_value[6] = {
-                            cHx_r[n0 + nn], cHy_r[n0 + nn], cEz_r[n0 + nn],
-                            cHx_i[n0 + nn], cHy_i[n0 + nn], cHz_i[n0 + nn]
-                        };
-
-                        hsize_t h_offset[4] = {0, ifreq, nn, 0};
-                        hsize_t h_count[4] = {1, 1, 1, 6};
-                        H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, h_offset, NULL, h_count, NULL);
-                        
-                        // データ書き込み (MPI対応)
-                        plist_id = H5Pcreate(H5P_DATASET_XFER);
-                        // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
-                        status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, memspace_id, dataspace_id, plist_id, h_value);
-                        if (status < 0) {
-                            fprintf(stderr, "Error writing H data at itime=%d, ifreq=%d, nn=%d\n", itime, ifreq, nn);
-                        }
-                        H5Pclose(plist_id);
-                    }
-                }
-                H5Dclose(dataset_id);
-                H5Sclose(dataspace_id);
-
-                // グループのクローズ
-                H5Gclose(group_id);
+                // HDF5 : 瞬時値スナップショットは MPI では未対応 (include/ofd_hdf5.h)
                 
                 // グループ作成後の同期
                 //MPI_Barrier(MPI_COMM_WORLD);
@@ -390,210 +311,7 @@ void solve(int io, double *tdft, FILE *fp)
 
     if (commRank == 0) {
         // メタデータの作成
-        hid_t metadata_group_id = H5Gcreate(file_id, "/metadata", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-
-        //sprintf(str, "group_name : %s", group_name);
-        fprintf(stdout, "meta1.\n");
-
-        // 時間に関するメタデータの書き込み
-        double time_metadata[1] = {Solver.maxiter * Dt};
-        //dataspace_id = H5Screate_simple(1, count, NULL);
-        hsize_t time_count[1] = {1};
-        dataspace_id = H5Screate_simple(1, time_count, NULL);
-        dataset_id = H5Dcreate(metadata_group_id, "time", H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-        // データ書き込み (MPI対応)
-        plist_id = H5Pcreate(H5P_DATASET_XFER);
-        // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
-        status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, plist_id, time_metadata);
-        H5Pclose(plist_id);
-        H5Dclose(dataset_id);
-        H5Sclose(dataspace_id);
-
-        // グリッドに関するメタデータの書き込み
-        //double grid_metadata[3] = {Dx, Dy, Dz};
-        //hsize_t grid_count[1] = {3};
-        //dataspace_id = H5Screate_simple(1, grid_count, NULL);
-        //dataset_id = H5Dcreate(metadata_group_id, "grid", H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-        // データ書き込み (MPI対応)
-        //plist_id = H5Pcreate(H5P_DATASET_XFER);
-        //status = H5Pset_fapl_mpio(plist_id, MPI_COMM_WORLD, MPI_INFO_NULL);
-        //if (status < 0) {
-        //    fprintf(stderr, "Error setting MPI parameters for plist_id");
-        //}
-        //status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, plist_id, grid_metadata);
-        //H5Pclose(plist_id);
-        //H5Dclose(dataset_id);
-        //H5Sclose(dataspace_id);
-
-        // Title
-        fprintf(stdout, "meta2.\n");
-        hsize_t title_dims[1] = {256};
-        dataspace_id = H5Screate_simple(1, title_dims, NULL);
-        dataset_id = H5Dcreate(metadata_group_id, "Title", H5T_NATIVE_CHAR, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-        // データ書き込み (MPI対応)
-        plist_id = H5Pcreate(H5P_DATASET_XFER);
-        // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
-        status = H5Dwrite(dataset_id, H5T_NATIVE_CHAR, H5S_ALL, H5S_ALL, plist_id, Title);
-        H5Pclose(plist_id);
-        H5Dclose(dataset_id);
-        H5Sclose(dataspace_id);
-
-        fprintf(stdout, "meta3.\n");
-        // 各種整数型メタデータの書き込み
-        struct {
-            const char *name;
-            void *value;
-            hid_t type;
-        } metadata[] = {
-            {"Nx", &Nx, H5T_NATIVE_INT},
-            {"Ny", &Ny, H5T_NATIVE_INT},
-            {"Nz", &Nz, H5T_NATIVE_INT},
-            {"Ni", &Ni, H5T_NATIVE_INT},
-            {"Nj", &Nj, H5T_NATIVE_INT},
-            {"Nk", &Nk, H5T_NATIVE_INT},
-            {"N0", &N0, H5T_NATIVE_INT},
-            {"NN", &NN, H5T_NATIVE_INT64},
-            {"NFreq1", &NFreq1, H5T_NATIVE_INT},
-            {"NFreq2", &NFreq2, H5T_NATIVE_INT},
-            {"NFeed", &NFeed, H5T_NATIVE_INT},
-            {"NPoint", &NPoint, H5T_NATIVE_INT},
-            {"Niter", &Niter, H5T_NATIVE_INT},
-            {"Ntime", &Ntime, H5T_NATIVE_INT},
-            {"Solver_maxiter", &Solver.maxiter, H5T_NATIVE_INT},
-            {"Solver_nout", &Solver.nout, H5T_NATIVE_INT},
-            {"NGline", &NGline, H5T_NATIVE_INT},
-            {"IPlanewave", &IPlanewave, H5T_NATIVE_INT}
-        };
-
-        for (int i = 0; i < sizeof(metadata) / sizeof(metadata[0]); i++) {
-            dataspace_id = H5Screate(H5S_SCALAR);
-            dataset_id = H5Dcreate(metadata_group_id, metadata[i].name, metadata[i].type, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-            // データ書き込み (MPI対応)
-            plist_id = H5Pcreate(H5P_DATASET_XFER);
-            // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
-            status = H5Dwrite(dataset_id, metadata[i].type, H5S_ALL, H5S_ALL, plist_id, metadata[i].value);
-            H5Pclose(plist_id);
-            H5Dclose(dataset_id);
-            H5Sclose(dataspace_id);
-        }
-
-        fprintf(stdout, "meta4.\n");
-        // Dtの書き込み
-        dataspace_id = H5Screate(H5S_SCALAR);
-        dataset_id = H5Dcreate(metadata_group_id, "Dt", H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-        plist_id = H5Pcreate(H5P_DATASET_XFER);
-        // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
-        status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, plist_id, &Dt);
-        H5Pclose(plist_id);
-        H5Dclose(dataset_id);
-        H5Sclose(dataspace_id);
-
-        fprintf(stdout, "meta5.\n");
-        // Planewaveの書き込み
-        dataspace_id = H5Screate(H5S_SCALAR);
-        dataset_id = H5Dcreate(metadata_group_id, "Planewave", H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-        // データ書き込み (MPI対応)
-        plist_id = H5Pcreate(H5P_DATASET_XFER);
-        // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
-        status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, plist_id, &Planewave);
-        H5Pclose(plist_id);
-        H5Dclose(dataset_id);
-        H5Sclose(dataspace_id);
-
-        fprintf(stdout, "meta6.\n");
-        // 配列データの書き込み
-        struct {
-            const char *name;
-            double *data;
-            size_t size;
-        } arrays[] = {
-            {"Xn", Xn, Nx + 1},
-            {"Yn", Yn, Ny + 1},
-            {"Zn", Zn, Nz + 1},
-            {"Xc", Xc, Nx},
-            {"Yc", Yc, Ny},
-            {"Zc", Zc, Nz},
-            {"Eiter", Eiter, Niter},
-            {"Hiter", Hiter, Niter},
-            {"VFeed", VFeed, NFeed * (Solver.maxiter + 1)},
-            {"IFeed", IFeed, NFeed * (Solver.maxiter + 1)},
-            {"VPoint", VPoint, NPoint * (Solver.maxiter + 1)},
-            {"Freq1", Freq1, NFreq1},
-            {"Freq2", Freq2, NFreq2},
-            {"Gline", reinterpret_cast<double*>(Gline), NGline * 2 * 3}
-        };
-
-        for (int i = 0; i < sizeof(arrays) / sizeof(arrays[0]); i++) {
-            fprintf(stdout, "meta6 1(%d)(%s).\n", i, arrays[i].name);
-            hsize_t array_dims[1] = {arrays[i].size};
-            dataspace_id = H5Screate_simple(1, array_dims, NULL);
-            dataset_id = H5Dcreate(metadata_group_id, arrays[i].name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-
-            // データ書き込み (MPI対応)
-            plist_id = H5Pcreate(H5P_DATASET_XFER);
-            // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
-            status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, plist_id, arrays[i].data);
-            H5Pclose(plist_id);
-            H5Dclose(dataset_id);
-            H5Sclose(dataspace_id);
-        }
-        
-        fprintf(stdout, "meta7.\n");
-        // Surfaceデータの書き込み
-        dataspace_id = H5Screate(H5S_SCALAR);
-        dataset_id = H5Dcreate(metadata_group_id, "NSurface", H5T_NATIVE_INT, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-        
-        // データ書き込み (MPI対応)
-        plist_id = H5Pcreate(H5P_DATASET_XFER);
-        // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
-        status = H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, plist_id, &NSurface);
-        H5Pclose(plist_id);
-        H5Dclose(dataset_id);
-        H5Sclose(dataspace_id);
-
-        fprintf(stdout, "meta8.\n");
-	    // surface_t構造体に対応する複合データ型を定義
-	    hid_t memtype = H5Tcreate(H5T_COMPOUND, sizeof(surface_t));
-	    H5Tinsert(memtype, "nx", HOFFSET(surface_t, nx), H5T_NATIVE_DOUBLE);
-	    H5Tinsert(memtype, "ny", HOFFSET(surface_t, ny), H5T_NATIVE_DOUBLE);
-	    H5Tinsert(memtype, "nz", HOFFSET(surface_t, nz), H5T_NATIVE_DOUBLE);
-	    H5Tinsert(memtype, "x", HOFFSET(surface_t, x), H5T_NATIVE_DOUBLE);
-	    H5Tinsert(memtype, "y", HOFFSET(surface_t, y), H5T_NATIVE_DOUBLE);
-	    H5Tinsert(memtype, "z", HOFFSET(surface_t, z), H5T_NATIVE_DOUBLE);
-	    H5Tinsert(memtype, "ds", HOFFSET(surface_t, ds), H5T_NATIVE_DOUBLE);
-
-        hsize_t surface_dims[1] = {NSurface};
-        dataspace_id = H5Screate_simple(1, surface_dims, NULL);
-        dataset_id = H5Dcreate(metadata_group_id, "Surface", memtype, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-
-        // データ書き込み (MPI対応)
-        plist_id = H5Pcreate(H5P_DATASET_XFER);
-        // (直列アクセスなので転送プロパティの MPI-IO 設定は不要)
-        status = H5Dwrite(dataset_id, memtype, H5S_ALL, H5S_ALL, plist_id, Surface);
-        H5Pclose(plist_id);
-        H5Dclose(dataset_id);
-        H5Sclose(dataspace_id);
-
-        fprintf(stdout, "meta9.\n");
-        // メタデータグループのクローズ
-        H5Gclose(metadata_group_id);
-        
-        fprintf(stdout, "meta10.\n");
-    }
-
-    // グループ作成後の同期
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    // ファイルを開いたのは rank 0 だけなので、フラッシュとクローズも rank 0 だけが行う
-    // (直列ドライバなので集団操作ではない)
-    if (commRank == 0) {
-        // キャッシュをフラッシュする
-        status = H5Fflush(file_id, H5F_SCOPE_GLOBAL);
-        if (status < 0) {
-            fprintf(stderr, "Error H5Fflush\n");
-        }
-
-        status = H5Fclose(file_id);
+        // HDF5 : 集約後にまとめて書く (この関数の末尾を参照)
         if (status < 0) {
             fprintf(stderr, "Error H5Fclose\n");
         }
@@ -623,6 +341,17 @@ void solve(int io, double *tdft, FILE *fp)
         // near3d
         if (NFreq2) {
             comm_near3d();
+        }
+
+        // HDF5 : 全域に集約したあとで書く。
+        // comm_near3d() は rank 0 の索引を全域 (setupSize(1,1,1,0)) に張り替え、
+        // g_cEx_r 等に全ランク分を集めるので、ここで初めて全域の値が書ける。
+        if (commRank == 0) {
+            hdf5_write_freqdomain(
+                g_cEx_r, g_cEx_i, g_cEy_r, g_cEy_i, g_cEz_r, g_cEz_i,
+                g_cHx_r, g_cHx_i, g_cHy_r, g_cHy_i, g_cHz_r, g_cHz_i);
+            hdf5_write_convergence(Niter, Eiter, Hiter);
+            hdf5_close();
         }
     }
 }

@@ -26,10 +26,50 @@ GUI フロントエンド [OpenFDTD-X](https://github.com/Sirokujira/OpenFDTD-X)
 - 出力:
   - `ofd.log` — 実行ログ (収束履歴、`=== normal end ===` で正常終了)
   - `ofd.out` — ポスト処理用バイナリ (ポストの正本)
-  - `time_series_data.h5` — HDF5。`/metadata` (S パラメータ・Zin・結合度・
-    Surface 等) と、出力ステップ毎の `/dataNNNNNN` (E/H/表面電流/発熱密度)
+  - `time_series_data.h5` — HDF5。表示用の時系列・分布データ
+    (→ [HDF5 出力](#hdf5-出力-画面表示用))
   - `ofd_post` 実行後: `ev.ev2` / `ev.ev3` (図形)、`far1d.log` /
     `far2d.log` / `near2d.log` など
+
+### HDF5 出力 (画面表示用)
+
+`time_series_data.h5` は GUI ([OpenFDTD-X](https://github.com/Sirokujira/OpenFDTD-X))
+での可視化を想定した出力です。書き込みは `sol/outputHdf5.c` に集約しています
+(API とファイル構成の詳細は `include/ofd_hdf5.h` のコメント)。
+
+| グループ | 内容 | 用途 |
+|---|---|---|
+| `/geometry` | `Xn/Yn/Zn` (節点座標), `Xc/Yc/Zc`, `Gline` (形状の線分) | 格子・構造の描画 |
+| `/timeseries` | `E`/`H` {nsnap, Nx+1, Ny+1, Nz+1, 3} の**瞬時値**, `time`/`time_H`/`itime` | 時間領域アニメーション |
+| `/freqdomain` | `E`/`H` {NFreq2, Nx+1, Ny+1, Nz+1, 3, 2} の複素振幅, `freq` | 振幅・位相の分布図 |
+| `/loss` | `P_loss` {NFreq2, Nx+1, Ny+1, Nz+1} [W/m³] | 発熱・損失分布 |
+| `/convergence` | `iter`/`E`/`H` | 収束履歴のグラフ |
+| `/metadata` | `Nx..Nz`, `Dt`, `Freq1/2`, `VFeed`/`IFeed`, `Surface`, `input_impedance` 他 | 解析条件・Zin 等 |
+
+- 電磁界配列は **(i,j,k,成分) の自然な 3 次元形状**で、PML/Mur の冗長領域を
+  除いた物理領域のみ。ソルバー内部の 1 次元添字 (`NA(i,j,k)`) を表示側が
+  知る必要はありません。
+- 値は **float32 + gzip 圧縮 + チャンク化**。`/timeseries` は
+  `H5S_UNLIMITED` の追記形式で、`Solver.nout` ステップごとに 1 枚増えます。
+- 成分は Yee 格子上の生の値です。節点 (i,j,k) の `Ex` は
+  (i,j,k)-(i+1,j,k) 稜線上の値なので、必要なら表示側で補間してください
+  (周波数領域の節点補間は `sol/nearfield_c.c` の `NodeE_c`/`NodeH_c` が実装)。
+- `E` と `H` は leapfrog により半ステップずれます。`time` が `E` の時刻、
+  `time_H = time - Dt/2` が `H` の時刻です。
+
+#### 実装ごとの対応状況
+
+| 実装 | `/timeseries` (瞬時値) | その他のグループ |
+|---|---|---|
+| CPU (`ofd`) | 対応 | 対応 |
+| CUDA (`ofd_cuda`) | 対応 | 対応 |
+| MPI (`ofd_mpi`) | **非対応** | 対応 (`comm_near3d()` の集約後に書くため全域が正しい) |
+| CUDA+MPI (`ofd_cuda_mpi`) | **非対応** | 対応 |
+
+MPI 版で瞬時値を出さないのは、各ランクが部分領域しか持たず、時間ループ内で
+全域を集める通信が別途必要なためです。従来は rank 0 の部分領域だけを全域と
+偽って書いていました。`/freqdomain` は CPU 版と**ビット一致**することを
+dipole サンプルで確認しています (2 プロセス、`h5diff`)。
 
 ### 熱解析レイヤ (実験的)
 
@@ -68,8 +108,6 @@ sh data/sample/thermal_material_check.sh /path/to/bin/ofd /tmp/thermal
   温度の境界条件も内点のみ更新の固定境界
 - セル幅を平均値 `(Xn[Nx]-Xn[0])/Nx` で取るため不等間隔メッシュ非対応
 - 温度配列を周波数ごとに持つ構造 (物理的には重ね合わせ後に 1 つのはず)
-- 出力ステップ毎の `/dataNNNNNN` は大容量 (dipole サンプルで ~50MB)。
-  不要な場合は該当ブロックを無効化してください
 
 ### 平面波励振の検証 (完全導体球 RCS)
 
