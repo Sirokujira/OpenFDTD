@@ -329,6 +329,13 @@ jobs:
       - name: Validation test — TPA decomposition invariance
         run: sh data/sample/tpa_decomp_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-decomp
 
+      # ノード間 (PC 跨ぎ) MPI 相当の経路 : --mca btl tcp,self で共有メモリ転送を
+      # 無効化し、物理的に別ノードへ送るときと同じ経路を単一ランナーで通す。
+      # スナップショットの集約 (comm_snapshot) は毎出力ステップで全ランクから
+      # rank 0 へ実データを送るので、ここが主な検査対象になる。
+      - name: Validation test — MPI network path (tcp btl)
+        run: sh data/sample/mpi_network_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-network
+
       # 解析解との比較 (CPU 版と同じスクリプト・同じ期待値を 2 プロセスで実行)
       - name: Validation test — TPA slab (2 processes)
         env:
@@ -344,6 +351,7 @@ jobs:
           path: |
             /tmp/mpi-smoke/*.log
             /tmp/mpi-decomp/*.log
+            /tmp/mpi-network/*.log
             /tmp/mpi-tpa/*.log
           if-no-files-found: ignore
 
@@ -389,6 +397,9 @@ jobs:
       - name: Validation test — TPA decomposition invariance (ofd_cuda_mpi)
         run: sh data/sample/tpa_decomp_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-decomp -cpu
 
+      - name: Validation test — MPI network path (ofd_cuda_mpi, tcp btl)
+        run: sh data/sample/mpi_network_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-network -cpu
+
       - name: Validation test — TPA slab (ofd_cuda_mpi, 2 processes)
         env:
           OFD_LAUNCHER: mpirun --oversubscribe -n 2
@@ -403,5 +414,6 @@ jobs:
           path: |
             /tmp/cuda-tpa/*.log
             /tmp/cuda-mpi-decomp/*.log
+            /tmp/cuda-mpi-network/*.log
             /tmp/cuda-mpi-tpa/*.log
           if-no-files-found: ignore
