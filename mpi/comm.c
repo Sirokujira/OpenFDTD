@@ -627,6 +627,17 @@ void comm_near3d(void)
 		g_cHy_i = (float *)malloc(size);
 		g_cHz_r = (float *)malloc(size);
 		g_cHz_i = (float *)malloc(size);
+		// ゼロ初期化する。Yee 格子では最外縁の一部の成分 (Ex の i=Nx,
+		// Ey の j=Ny, Ez の k=Nz) が更新対象外で、以下のコピー/受信でも
+		// 埋められない。非 MPI 版では確保時に 0 になっているので、
+		// 初期化を省くとその成分だけ MPI 版が未初期化値になる
+		// (HDF5 に全域を出すようになって顕在化した)。
+		memset(g_cEx_r, 0, size);  memset(g_cEx_i, 0, size);
+		memset(g_cEy_r, 0, size);  memset(g_cEy_i, 0, size);
+		memset(g_cEz_r, 0, size);  memset(g_cEz_i, 0, size);
+		memset(g_cHx_r, 0, size);  memset(g_cHx_i, 0, size);
+		memset(g_cHy_r, 0, size);  memset(g_cHy_i, 0, size);
+		memset(g_cHz_r, 0, size);  memset(g_cHz_i, 0, size);
 		// self copy
 		for (int ifreq = 0; ifreq < NFreq2; ifreq++) {
 			for (int i = imin; i <  imax; i++) {

@@ -151,6 +151,7 @@ if (WITH_CUDA)
         set(SOURCES2
             ${CMAKE_SOURCE_DIR}/sol/input_data.c
             ${CMAKE_SOURCE_DIR}/sol/input2.c
+            ${CMAKE_SOURCE_DIR}/sol/outputHdf5.c
             ${CMAKE_SOURCE_DIR}/sol/monitor.c
             ${CMAKE_SOURCE_DIR}/sol/memallocfree1.c
             ${CMAKE_SOURCE_DIR}/sol/memallocfree3.c
@@ -346,6 +347,7 @@ else()
         set(SOURCES3
             ${CMAKE_SOURCE_DIR}/sol/average.c
             ${CMAKE_SOURCE_DIR}/sol/cputime.c
+            ${CMAKE_SOURCE_DIR}/sol/outputHdf5.c
             ${CMAKE_SOURCE_DIR}/sol/dftNear3d.c
             ${CMAKE_SOURCE_DIR}/sol/dispersionEx.c
             ${CMAKE_SOURCE_DIR}/sol/dispersionEy.c
