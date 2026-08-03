@@ -118,6 +118,7 @@ extern double      comm_cputime(void);
 extern void        comm_feed(void);
 extern int         comm_inproc(int, int, int);
 extern void        comm_near3d(void);
+extern void        comm_snapshot(void);
 extern void        comm_point(void);
 extern void        comm_X(int);
 extern void        comm_Y(int);

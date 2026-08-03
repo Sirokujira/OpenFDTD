@@ -194,6 +194,13 @@ int hdf5_open(int with_timeseries)
 {
 	hid_t gid;
 
+	/* hdf5 キーで出力そのものを止められる (既定は出力する)。
+	   h5file < 0 のままにすることで、以降の hdf5_* はすべて何もしない。 */
+	if (!Hdf5Output) {
+		h5file = -1;
+		return 0;
+	}
+
 	h5file = H5Fcreate(OFD_H5_FILE, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
 	if (h5file < 0) {
 		fprintf(stderr, "*** cannot create %s\n", OFD_H5_FILE);
@@ -249,6 +256,11 @@ void hdf5_write_snapshot(int itime, double t,
 
 	if ((h5file < 0) || (ts_group < 0)) return;
 	if ((ex == NULL) || (hx == NULL)) return;
+
+	/* hdf5 キーの interval で間引く (0 なら毎出力ステップ)。
+	   呼び出し元が Solver.nout ごとにしか呼ばないので、interval は
+	   Solver.nout の倍数に丸めてある (sol/input_data.c)。 */
+	if ((Hdf5Interval > 0) && (itime % Hdf5Interval != 0)) return;
 
 	size = (size_t)node_count() * 3 * sizeof(float);
 	buf = (float *)malloc(size);
