@@ -14,8 +14,13 @@
 # 全ランクから rank 0 へ実データを送るので、ここが主な検査対象になる。
 #
 # 判定 : 1 プロセス実行を基準に、TCP 経路の複数プロセス実行で
-#        ofd.log の収束履歴と入力インピーダンス表が完全一致すること。
-#        HDF5 が読める環境なら /timeseries と /freqdomain も h5diff で比較する。
+#        ofd.log の収束履歴と入力インピーダンス表、および (h5diff があれば)
+#        /timeseries と /freqdomain が一致すること。
+#
+# 完全一致ではなく相対誤差で見る。収束履歴は comm_average() の Allreduce に
+# よる総和なので、加算順序がプロセス数で変わり最終桁が動く
+# (ofd_cuda_mpi では実際に 3e-6 程度ずれる。ofd_mpi では偶然一致していた)。
+# 一方、転送が壊れた場合の差は桁違いに大きいので、この許容幅でも検出できる。
 #
 # 使い方 : mpi_network_check.sh <ソルバー(絶対パス)> <作業ディレクトリ> [追加オプション...]
 #   例 : mpi_network_check.sh /path/to/bin/ofd_mpi      /tmp/w
@@ -26,6 +31,7 @@
 #   MPIRUN_OPTS … mpirun のオプション (既定 --oversubscribe)
 #   BTL_OPTS    … 転送経路の指定 (既定 --mca btl tcp,self)
 #   NPROC_LIST  … 試すプロセス数 (既定 "2 4")
+#   TOL         … 相対許容誤差 (既定 1e-4)
 
 set -e
 
@@ -43,6 +49,7 @@ MPIRUN=${MPIRUN:-mpirun}
 MPIRUN_OPTS=${MPIRUN_OPTS:---oversubscribe}
 BTL_OPTS=${BTL_OPTS:---mca btl tcp,self}
 NPROC_LIST=${NPROC_LIST:-2 4}
+TOL=${TOL:-1e-4}
 
 SRC=$(dirname "$0")/dipole.ofd
 if [ ! -f "$SRC" ]; then
@@ -61,6 +68,32 @@ extract() {
 	grep -E '^[[:space:]]*[0-9]' "$1" | sed 's/[[:space:]]\+/ /g;s/^ //;s/ $//'
 }
 
+# 数値を相対誤差で比較する (行数・列数が違えば即 NG)
+compare_num() {
+	awk -v tol="$3" '
+	NR == FNR { ref[FNR] = $0; nref = FNR; next }
+	{
+		if (FNR > nref) { extra = 1; next }
+		n = split(ref[FNR], a); m = split($0, b);
+		if (n != m) { printf "  列数が違う (行 %d): %d vs %d\n", FNR, n, m; bad = 1; next }
+		for (i = 1; i <= n; i++) {
+			r = a[i] + 0; c = b[i] + 0;
+			d = (r > c) ? r - c : c - r;
+			s = (r < 0) ? -r : r;
+			if (s < 1) s = 1;
+			if (d / s > tol) {
+				printf "  行 %d 列 %d : %s vs %s (相対 %.3g)\n", FNR, i, a[i], b[i], d / s;
+				bad = 1;
+			}
+		}
+		ncur = FNR;
+	}
+	END {
+		if (extra || (ncur != nref)) { printf "  行数が違う : %d vs %d\n", nref, FNR; bad = 1 }
+		exit bad ? 1 : 0
+	}' "$1" "$2"
+}
+
 # 基準 : 1 プロセス (共有メモリも TCP も使わない)
 $MPIRUN $MPIRUN_OPTS -n 1 "$SOLVER" $EXTRA -n 1 dipole.ofd > /dev/null 2>&1
 extract ofd.log > ref.txt
@@ -74,18 +107,18 @@ for np in $NPROC_LIST; do
 	$MPIRUN $MPIRUN_OPTS $BTL_OPTS -n "$np" "$SOLVER" $EXTRA -n 1 dipole.ofd > /dev/null 2>&1
 	extract ofd.log > "out_$np.txt"
 
-	if cmp -s ref.txt "out_$np.txt"; then
-		echo "tcp -n $np : ofd.log 一致 -> OK"
+	if compare_num ref.txt "out_$np.txt" "$TOL" > cmp_$np.txt 2>&1; then
+		echo "tcp -n $np : ofd.log 一致 (相対誤差 <= $TOL) -> OK"
 	else
 		echo "tcp -n $np : ofd.log が基準と異なる -> NG"
-		diff ref.txt "out_$np.txt" | head -10 || true
+		head -10 cmp_$np.txt || true
 		status=1
 	fi
 
 	# HDF5 も比較する (h5diff があるときだけ)
 	if [ -f ref.h5 ] && [ -f time_series_data.h5 ] && command -v h5diff > /dev/null 2>&1; then
 		for ds in /timeseries/E /timeseries/H /freqdomain/E /freqdomain/H; do
-			if h5diff ref.h5 time_series_data.h5 "$ds" "$ds" > /dev/null 2>&1; then
+			if h5diff -p "$TOL" ref.h5 time_series_data.h5 "$ds" "$ds" > /dev/null 2>&1; then
 				echo "           $ds 一致 -> OK"
 			else
 				echo "           $ds が基準と異なる -> NG"

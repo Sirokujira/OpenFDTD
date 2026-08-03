@@ -297,7 +297,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake gcc g++ libhdf5-dev libopenmpi-dev openmpi-bin
+          # hdf5-tools は h5diff (mpi_network_check.sh の payload 比較) に必要
+          sudo apt-get install -y cmake gcc g++ libhdf5-dev hdf5-tools libopenmpi-dev openmpi-bin
 
       - name: Configure (MPI)
         run: cmake -B build-mpi -DCMAKE_BUILD_TYPE=Release -DWITH_CUDA=OFF -DWITH_MPI=ON
@@ -375,7 +376,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake gcc g++ libhdf5-dev nvidia-cuda-toolkit \
+          sudo apt-get install -y cmake gcc g++ libhdf5-dev hdf5-tools nvidia-cuda-toolkit \
                                   libopenmpi-dev openmpi-bin
           nvcc --version
 
