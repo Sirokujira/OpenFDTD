@@ -17,10 +17,7 @@ void solve(int io, double *tdft, FILE *fp)
 {
     // HDF5ファイルの作成
     // 関数から?(fp の入替え?)
-    hid_t file_id;
     // local
-    hid_t group_id, dataset_id, dataspace_id, memspace_id;
-    herr_t status;
 
     double fmax[] = {0, 0};
     char   str[BUFSIZ];
@@ -209,9 +206,6 @@ void solve(int io, double *tdft, FILE *fp)
         }
     }
 
-    // メモリスペース、データセットとデータスペースのクローズ
-    status = H5Sclose(memspace_id);
-
     // result
     if (io) {
         sprintf(str, "    --- %s ---", (converged ? "converged" : "max steps"));
@@ -238,9 +232,10 @@ void solve(int io, double *tdft, FILE *fp)
     // copy point from device to host
     if (GPU) {
         copy_to_host();
+        // DFT 配列 (cEx_r 等) は UM なので、ホストから読む前に同期する
+        cudaDeviceSynchronize();
     }
 
-    // メタデータの作成
     // HDF5 : 周波数領域の最終結果・収束履歴・メタデータ (sol/outputHdf5.c)
     hdf5_write_freqdomain(
         cEx_r, cEx_i, cEy_r, cEy_i, cEz_r, cEz_i,

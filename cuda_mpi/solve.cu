@@ -20,10 +20,7 @@ void solve(int io, double *tdft, FILE *fp)
 {
     // HDF5ファイルの作成
     // 関数から?(fp の入替え?)
-    hid_t file_id;
     // local
-    hid_t group_id, dataset_id, dataspace_id, memspace_id;
-    herr_t status, ret;
 
     double fmax[] = {0, 0};
     char   str[BUFSIZ];
@@ -71,8 +68,6 @@ void solve(int io, double *tdft, FILE *fp)
     // 他のランクと足並みが揃わずデッドロックする。
     // CPU+MPI 版 (mpi/solve.c) と同じ修正で、出力されるファイルの内容・構造は
     // 従来と同一。→ CUDA+MPI ビルドにも並列 HDF5 は不要。
-    hid_t plist_id;
-    file_id = -1;
     if (commRank == 0) {
         hdf5_open(0);
     }
@@ -252,11 +247,6 @@ void solve(int io, double *tdft, FILE *fp)
                 //MPI_Barrier(MPI_COMM_WORLD);
 
                 // HDF5 : 瞬時値スナップショットは MPI では未対応 (include/ofd_hdf5.h)
-                
-                // グループ作成後の同期
-                //MPI_Barrier(MPI_COMM_WORLD);
-                // メモリスペース、データセットとデータスペースのクローズ
-                status = H5Sclose(memspace_id);
             }
 
             // check convergence
@@ -309,13 +299,8 @@ void solve(int io, double *tdft, FILE *fp)
     // グループの作成前に同期
     //MPI_Barrier(MPI_COMM_WORLD);
 
-    if (commRank == 0) {
-        // メタデータの作成
-        // HDF5 : 集約後にまとめて書く (この関数の末尾を参照)
-        if (status < 0) {
-            fprintf(stderr, "Error H5Fclose\n");
-        }
-    }
+    // HDF5 : 周波数領域の結果は comm_near3d() の集約後に書く
+    // (この関数の末尾を参照)
 
     // free
     memfree2_gpu();
