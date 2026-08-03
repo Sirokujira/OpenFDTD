@@ -7,30 +7,6 @@
 #include "hdf5.h"
 #include "ofd_hdf5.h"
 
-// 温度更新関数
-//void updateTemperature(double *T, int Nx, int Ny, int Nz, double alpha, double Dt, double *P_loss) {
-// 温度更新関数
-void updateTemperature(double *T, int64_t NN, int NFreq2, double alpha, double Dt, double *P_loss, double Dx, double Dy, double Dz) {
-    for (int ifreq = 0; ifreq < NFreq2; ifreq++) {
-        const int64_t base_idx = (int64_t)ifreq * NN;
-        // NA マクロで 3 次元格子の隣接セルを参照する (内点のみ更新、境界は固定境界)
-        for (int i = 1; i < Nx - 1; i++) {
-        for (int j = 1; j < Ny - 1; j++) {
-        for (int k = 1; k < Nz - 1; k++) {
-            const int64_t idx = base_idx + NA(i, j, k);
-            const double d2Tdx2 = (T[base_idx + NA(i + 1, j, k)] - 2.0 * T[idx] + T[base_idx + NA(i - 1, j, k)]) / (Dx * Dx);
-            const double d2Tdy2 = (T[base_idx + NA(i, j + 1, k)] - 2.0 * T[idx] + T[base_idx + NA(i, j - 1, k)]) / (Dy * Dy);
-            const double d2Tdz2 = (T[base_idx + NA(i, j, k + 1)] - 2.0 * T[idx] + T[base_idx + NA(i, j, k - 1)]) / (Dz * Dz);
-
-            // 温度の更新
-            T[idx] += alpha * Dt * (d2Tdx2 + d2Tdy2 + d2Tdz2) + Dt * P_loss[idx];
-        }
-        }
-        }
-    }
-}
-
-
 // 発熱量の計算 (セル毎に材料を参照する)
 //
 // 各セル・各成分について
@@ -133,34 +109,31 @@ void solve(int io, double *tdft, FILE *fp) {
         tpaStart = Solver.maxiter - nper;
     }
 
-    // 温度配列の初期化
-    //int Nx = 100, Ny = 100, Nz = 100;
-    double alpha = 0.01;  // 熱拡散係数
-    //double *T = (double *)malloc(Nx * Ny * Nz * sizeof(double));
-    //double *P_loss = (double *)malloc(Nx * Ny * Nz * sizeof(double));
-    //memset(T, 0, Nx * Ny * Nz * sizeof(double));
-    //memset(P_loss, 0, Nx * Ny * Nz * sizeof(double));
-    //NN
-    double *T = (double *)malloc(NFreq2 * NN * sizeof(double));
+    // 発熱密度 (ログの Thermal: dissipated と HDF5 の /loss/P_loss に使う)
+    //
+    // 温度分布そのものは計算しない。以前は 3 次元熱拡散 (updateTemperature) を
+    // 毎ステップ回していたが、結果はどこにも出力されず捨てられていた上に、
+    // 数値的にも物理的にも意味を持っていなかったので計算ごと外した:
+    //
+    //  - 時間刻みが FDTD の Dt (光学解析では ~1e-16 s) のままだった。
+    //    T += Dt * P_loss は 1 ステップあたり ~7e-18 しか足されず、初期温度 20 の
+    //    倍精度分解能 (20 * 2.2e-16 = 4.4e-15) に完全に吸収される。実際
+    //    thermal_slab.ofd でも最後まで全セルが初期値のまま (T = [20, 20]) だった。
+    //  - 温度を周波数ごとに持っていた。温度は全周波数の発熱の合計で決まる
+    //    単一のスカラー場なので、NFreq2 面に分けた時点で物理が合わない。
+    //  - ラプラシアンが一様格子 (平均 Dx/Dy/Dz) 前提だった。OpenFDTD の
+    //    メッシュは不等間隔を許すので、そのままでは使えない。
+    //
+    // 意味のある温度分布を出すには、熱拡散用の別の時間刻み (fs ではなく
+    // us〜s のオーダー)、入射電力からの絶対値換算 (P_loss は相対値)、材料ごとの
+    // 熱拡散係数、不等間隔格子のラプラシアンが要る。ここで残す P_losses が
+    // その入力になる。
     double *P_losses = (double *)malloc(NFreq2 * NN * sizeof(double));
-    if ((T == NULL) || (P_losses == NULL)) {
-        fprintf(stderr, "*** temperature array malloc error (NFreq2=%d NN=%zu)\n", NFreq2, (size_t)NN);
+    if (P_losses == NULL) {
+        fprintf(stderr, "*** power loss array malloc error (NFreq2=%d NN=%zu)\n", NFreq2, (size_t)NN);
         exit(1);
     }
-    memset(T, 0, NFreq2 * NN * sizeof(double));
     memset(P_losses, 0, NFreq2 * NN * sizeof(double));
-
-    // セルの幅（空間ステップ）を計算
-    double Dx = (Xn[Nx] - Xn[0]) / Nx;
-    double Dy = (Yn[Ny] - Yn[0]) / Ny;
-    double Dz = (Zn[Nz] - Zn[0]) / Nz;
-    sprintf(str, "%.6f %.6f %.6f", Dx, Dy, Dz);
-    fprintf(stdout, "%s\n", str);
-
-    // 初期温度設定
-    for (int i = 0; i < NFreq2 * NN; i++) {
-        T[i] = 20.0;  // 初期温度（20度）
-    }
 
     // HDF5ファイルの作成
     hdf5_open(1);
@@ -280,11 +253,6 @@ void solve(int io, double *tdft, FILE *fp) {
                            cEx_r, cEx_i, cEy_r, cEy_i, cEz_r, cEz_i,
                            cHx_r, cHx_i, cHy_r, cHy_i, cHz_r, cHz_i);
 
-        // 温度の更新
-        //updateTemperature(T, Nx, Ny, Nz, alpha, Dt, P_loss);
-        // 温度の更新
-        updateTemperature(T, NN, NFreq2, alpha, Dt, P_losses, Dx, Dy, Dz);
-
         // average and convergence
         if ((itime % Solver.nout == 0) || (itime == Solver.maxiter)) {
             // average
@@ -372,7 +340,6 @@ void solve(int io, double *tdft, FILE *fp) {
     hdf5_write_loss(P_losses);
 
     // 熱解析レイヤのメモリ解放 (上の診断で P_losses を読み終えてから)
-    free(T);
     free(P_losses);
     free(loss_esgm);
     free(loss_msgm);
