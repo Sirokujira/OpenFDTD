@@ -226,15 +226,10 @@ void solve(int io, double *tdft, FILE *fp)
             // comm_snapshot() は全ランクが参加する集団操作なので、
             // io (= rank 0 か) の条件の外で呼ぶこと。中に入れると送受信の
             // 相手が食い違ってデッドロックする。
-            // 全域に集めたあと rank 0 だけが書く。索引は書き込みの間だけ
-            // 全域 (setupSize(1,1,1,0)) に張り替えて戻す。
-            if (Hdf5Output) {
-                comm_snapshot();
-                if (commRank == 0) {
-                    setupSize(1, 1, 1, 0);
-                    hdf5_write_snapshot(itime, t, g_Ex, g_Ey, g_Ez, g_Hx, g_Hy, g_Hz);
-                    setupSize(Npx, Npy, Npz, commRank);
-                }
+            // hdf5_snapshot_enabled() は全ランクが同じ答を返すので、
+            // これで括れば間引き時に無駄な転送が起きない。
+            if (hdf5_snapshot_enabled(itime)) {
+                comm_snapshot(itime, t);
             }
 
             // check convergence

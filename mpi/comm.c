@@ -10,6 +10,7 @@ MPI routines
 
 #include "ofd.h"
 #include "ofd_prototype.h"
+#include "ofd_hdf5.h"
 
 // initialize
 void mpi_init(int argc, char **argv)
@@ -928,111 +929,30 @@ int comm_inproc(int i, int j, int k)
 // 各成分の範囲は comm_near3d() と同一にしてある。Yee 格子で更新対象外に
 // なる最外縁 (Ex の i=Nx, Ey の j=Ny, Ez の k=Nz) は書かれないので、
 // 確保時のゼロ初期化がそのまま残る (非 MPI 版と同じ値になる)。
-void comm_snapshot(void)
+void comm_snapshot(int itime, double t)
 {
 #ifdef _MPI
 	const int tag = 0;
 	MPI_Status status;
 	int isend[6], irecv[6];
-	int64_t g_n;
 
 	if (NN <= 0) return;
 
-	// 全域の索引 (Ni, Nj, Nk, N0, NN) を 1 度だけ取得して覚えておく。
-	// setupSize() を使うので添字の計算式を二重に持たない。
-	static int64_t G_Ni = 0, G_Nj = 0, G_Nk = 0, G_N0 = 0, G_NN = 0;
-	if (G_NN <= 0) {
-		setupSize(1, 1, 1, 0);
-		G_Ni = Ni;  G_Nj = Nj;  G_Nk = Nk;  G_N0 = N0;  G_NN = NN;
-		setupSize(Npx, Npy, Npz, commRank);   // ローカル索引に戻す
-
-		if (commRank == 0) {
-			const size_t size = G_NN * sizeof(real_t);
-			g_Ex = (real_t *)malloc(size);
-			g_Ey = (real_t *)malloc(size);
-			g_Ez = (real_t *)malloc(size);
-			g_Hx = (real_t *)malloc(size);
-			g_Hy = (real_t *)malloc(size);
-			g_Hz = (real_t *)malloc(size);
-			if ((g_Ex == NULL) || (g_Ey == NULL) || (g_Ez == NULL) ||
-			    (g_Hx == NULL) || (g_Hy == NULL) || (g_Hz == NULL)) {
-				fprintf(stderr, "*** snapshot buffer malloc error (NN=%zu)\n", (size_t)G_NN);
-				fflush(stderr);
-				G_NN = 0;
-				return;
-			}
-			memset(g_Ex, 0, size);  memset(g_Ey, 0, size);  memset(g_Ez, 0, size);
-			memset(g_Hx, 0, size);  memset(g_Hy, 0, size);  memset(g_Hz, 0, size);
-		}
-	}
-	if (G_NN <= 0) return;
-
-	// root : 自分の分をコピーする
+	// rank 0 は出力バッファを用意する。全域配列 (6 成分) を抱えず、
+	// 届いた分をその場で出力バッファへ書き込む (逐次ストリーミング集約)。
+	// 保持するのは出力と同じ (Nx+1)(Ny+1)(Nz+1)*3 の 2 本だけ。
 	if (commRank == 0) {
-		for (int i = iMin; i <  iMax; i++) {
-		for (int j = jMin; j <= jMax; j++) {
-		for (int k = kMin; k <= kMax; k++) {
-			g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-			g_Ex[g_n] = Ex[NA(i, j, k)];
-		}
-		}
-		}
-		for (int i = iMin; i <= iMax; i++) {
-		for (int j = jMin; j <  jMax; j++) {
-		for (int k = kMin; k <= kMax; k++) {
-			g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-			g_Ey[g_n] = Ey[NA(i, j, k)];
-		}
-		}
-		}
-		for (int i = iMin; i <= iMax; i++) {
-		for (int j = jMin; j <= jMax; j++) {
-		for (int k = kMin; k <  kMax; k++) {
-			g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-			g_Ez[g_n] = Ez[NA(i, j, k)];
-		}
-		}
-		}
-		for (int i = iMin - 0; i <= iMax; i++) {
-		for (int j = jMin - 1; j <= jMax; j++) {
-		for (int k = kMin - 1; k <= kMax; k++) {
-			g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-			g_Hx[g_n] = Hx[NA(i, j, k)];
-		}
-		}
-		}
-		for (int i = iMin - 1; i <= iMax; i++) {
-		for (int j = jMin - 0; j <= jMax; j++) {
-		for (int k = kMin - 1; k <= kMax; k++) {
-			g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-			g_Hy[g_n] = Hy[NA(i, j, k)];
-		}
-		}
-		}
-		for (int i = iMin - 1; i <= iMax; i++) {
-		for (int j = jMin - 1; j <= jMax; j++) {
-		for (int k = kMin - 0; k <= kMax; k++) {
-			g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-			g_Hz[g_n] = Hz[NA(i, j, k)];
-		}
-		}
-		}
-	}
+		if (!hdf5_snapshot_begin()) return;
 
-	// === 転送 ===
-	//
-	// 送るのはローカル配列全体 (NN) ではなく、rank 0 が実際に読む範囲だけ。
-	// NN は ABC の余白 (Mur なら 1 層、PML なら cPML.l 層) を各面に含むので、
-	// PML 8 層・1 辺 100 セルの領域なら (100+16)^3 / (100+2)^3 ≒ 1.5 倍の
-	// 無駄になる。下側に 1 層だけ広げた箱
-	//     [iMin-1, iMax] x [jMin-1, jMax] x [kMin-1, kMax]
-	// が H 成分の読み出し範囲 (jMin-1 等) を含む最小の直方体なので、これを
-	// 6 成分ぶん 1 本の連続バッファに詰めて 1 回で送る
-	// (従来は 6 回の MPI_Send に分かれていた)。
-	// 取り出す範囲は従来と 1 バイトも変えていないので、結果は不変。
+		// 自分の担当分 (成分ごとに Yee 格子で実際に更新される範囲)
+		hdf5_snapshot_put(0, 0, iMin, iMax - 1, jMin, jMax, kMin, kMax, Ex, Ni, Nj, Nk, N0);
+		hdf5_snapshot_put(0, 1, iMin, iMax, jMin, jMax - 1, kMin, kMax, Ey, Ni, Nj, Nk, N0);
+		hdf5_snapshot_put(0, 2, iMin, iMax, jMin, jMax, kMin, kMax - 1, Ez, Ni, Nj, Nk, N0);
+		hdf5_snapshot_put(1, 0, iMin, iMax, jMin - 1, jMax, kMin - 1, kMax, Hx, Ni, Nj, Nk, N0);
+		hdf5_snapshot_put(1, 1, iMin - 1, iMax, jMin, jMax, kMin - 1, kMax, Hy, Ni, Nj, Nk, N0);
+		hdf5_snapshot_put(1, 2, iMin - 1, iMax, jMin - 1, jMax, kMin, kMax, Hz, Ni, Nj, Nk, N0);
 
-	if (commRank == 0) {
-		// 受信バッファは最大サイズまで伸ばして使い回す (毎回の malloc を避ける)
+		// 他ランクから 1 つずつ受け取り、その都度書き込んで捨てる
 		static real_t *rbuf = NULL;
 		static size_t rbuf_n = 0;
 
@@ -1063,80 +983,38 @@ void comm_snapshot(void)
 			}
 			MPI_Recv(rbuf, (int)(nbox * 6), MPI_REAL_T, irank, tag, MPI_COMM_WORLD, &status);
 
-			// 箱の中の添字 (i,j,k は絶対値、原点は imin-1, jmin-1, kmin-1)
-			#define BOX(i,j,k) ((((size_t)((i) - (imin - 1)) * njb + ((j) - (jmin - 1))) * nkb) + ((k) - (kmin - 1)))
+			// 受信した箱も (ni, nj, nk, n0) の形で引ける。
+			// 箱の原点は (imin-1, jmin-1, kmin-1)。
+			{
+				const int64_t bni = (int64_t)njb * nkb;
+				const int64_t bnj = nkb;
+				const int64_t bnk = 1;
+				const int64_t bn0 = -(((int64_t)(imin - 1) * bni)
+				                    + ((int64_t)(jmin - 1) * bnj)
+				                    + ((int64_t)(kmin - 1) * bnk));
+				const real_t *b_ex = rbuf + (0 * nbox);
+				const real_t *b_ey = rbuf + (1 * nbox);
+				const real_t *b_ez = rbuf + (2 * nbox);
+				const real_t *b_hx = rbuf + (3 * nbox);
+				const real_t *b_hy = rbuf + (4 * nbox);
+				const real_t *b_hz = rbuf + (5 * nbox);
 
-			const real_t *b_ex = rbuf + (0 * nbox);
-			const real_t *b_ey = rbuf + (1 * nbox);
-			const real_t *b_ez = rbuf + (2 * nbox);
-			const real_t *b_hx = rbuf + (3 * nbox);
-			const real_t *b_hy = rbuf + (4 * nbox);
-			const real_t *b_hz = rbuf + (5 * nbox);
-
-			// Ex
-			for (int i = imin; i <  imax; i++) {
-			for (int j = jmin; j <= jmax; j++) {
-			for (int k = kmin; k <= kmax; k++) {
-				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-				g_Ex[g_n] = b_ex[BOX(i, j, k)];
+				hdf5_snapshot_put(0, 0, imin, imax - 1, jmin, jmax, kmin, kmax, b_ex, bni, bnj, bnk, bn0);
+				hdf5_snapshot_put(0, 1, imin, imax, jmin, jmax - 1, kmin, kmax, b_ey, bni, bnj, bnk, bn0);
+				hdf5_snapshot_put(0, 2, imin, imax, jmin, jmax, kmin, kmax - 1, b_ez, bni, bnj, bnk, bn0);
+				hdf5_snapshot_put(1, 0, imin, imax, jmin - 1, jmax, kmin - 1, kmax, b_hx, bni, bnj, bnk, bn0);
+				hdf5_snapshot_put(1, 1, imin - 1, imax, jmin, jmax, kmin - 1, kmax, b_hy, bni, bnj, bnk, bn0);
+				hdf5_snapshot_put(1, 2, imin - 1, imax, jmin - 1, jmax, kmin, kmax, b_hz, bni, bnj, bnk, bn0);
 			}
-			}
-			}
-
-			// Ey
-			for (int i = imin; i <= imax; i++) {
-			for (int j = jmin; j <  jmax; j++) {
-			for (int k = kmin; k <= kmax; k++) {
-				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-				g_Ey[g_n] = b_ey[BOX(i, j, k)];
-			}
-			}
-			}
-
-			// Ez
-			for (int i = imin; i <= imax; i++) {
-			for (int j = jmin; j <= jmax; j++) {
-			for (int k = kmin; k <  kmax; k++) {
-				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-				g_Ez[g_n] = b_ez[BOX(i, j, k)];
-			}
-			}
-			}
-
-			// Hx
-			for (int i = imin - 0; i <= imax; i++) {
-			for (int j = jmin - 1; j <= jmax; j++) {
-			for (int k = kmin - 1; k <= kmax; k++) {
-				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-				g_Hx[g_n] = b_hx[BOX(i, j, k)];
-			}
-			}
-			}
-
-			// Hy
-			for (int i = imin - 1; i <= imax; i++) {
-			for (int j = jmin - 0; j <= jmax; j++) {
-			for (int k = kmin - 1; k <= kmax; k++) {
-				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-				g_Hy[g_n] = b_hy[BOX(i, j, k)];
-			}
-			}
-			}
-
-			// Hz
-			for (int i = imin - 1; i <= imax; i++) {
-			for (int j = jmin - 1; j <= jmax; j++) {
-			for (int k = kmin - 0; k <= kmax; k++) {
-				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-				g_Hz[g_n] = b_hz[BOX(i, j, k)];
-			}
-			}
-			}
-
-			#undef BOX
 		}
+
+		hdf5_snapshot_commit(itime, t);
 	}
 	// root 以外 : 自分の担当範囲を 1 本のバッファに詰めて送る
+	//
+	// 送るのはローカル配列全体 (NN) ではなく rank 0 が実際に読む範囲だけ。
+	// NN は ABC の余白 (Mur なら 1 層、PML なら cPML.l 層) を各面に含むので、
+	// 下側に 1 層だけ広げた箱 (H 成分の jMin-1 等を含む最小の直方体) に絞る。
 	else {
 		static real_t *sbuf = NULL;
 		static size_t sbuf_n = 0;
@@ -1187,6 +1065,8 @@ void comm_snapshot(void)
 		MPI_Send(isend, 6, MPI_INT, 0, tag, MPI_COMM_WORLD);
 		MPI_Send(sbuf, (int)(nbox * 6), MPI_REAL_T, 0, tag, MPI_COMM_WORLD);
 	}
-
+#else
+	itime = itime;  // dummy
+	t = t;          // dummy
 #endif
 }

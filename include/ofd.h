@@ -339,9 +339,6 @@ EXTERN int          Plot3dGeom;              // plot geometry 3D
 
 EXTERN int          commSize, commRank;      // MPI
 EXTERN int          Npx, Npy, Npz, Ipx, Ipy, Ipz;  // block
-// MPI : 瞬時値スナップショットを rank 0 に集めた全域配列 (mpi/comm.c)
-EXTERN real_t       *g_Ex, *g_Ey, *g_Ez, *g_Hx, *g_Hy, *g_Hz;
-
 EXTERN float        *g_cEx_r, *g_cEy_r, *g_cEz_r, *g_cHx_r, *g_cHy_r, *g_cHz_r;
 EXTERN float        *g_cEx_i, *g_cEy_i, *g_cEz_i, *g_cHx_i, *g_cHy_i, *g_cHz_i;
 EXTERN bid_t        Bid;

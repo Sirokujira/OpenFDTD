@@ -36,26 +36,6 @@ static int64_t node_count(void)
 	return (int64_t)(Nx + 1) * (Ny + 1) * (Nz + 1);
 }
 
-/* ソルバー内部の 1 次元配列を (i,j,k) 順の密な配列に詰め替える。
-   添字は dst[(((i*(Ny+1)) + j) * (Nz+1) + k) * 3 + component]。
-   3 成分をまとめて (i,j,k,component) に詰め替える */
-static void pack_vector(float *dst, const real_t *sx, const real_t *sy, const real_t *sz)
-{
-	int i, j, k;
-	int64_t m = 0;
-
-	for (i = 0; i <= Nx; i++) {
-	for (j = 0; j <= Ny; j++) {
-	for (k = 0; k <= Nz; k++) {
-		const int64_t n = NA(i, j, k);
-		dst[m++] = (float)sx[n];
-		dst[m++] = (float)sy[n];
-		dst[m++] = (float)sz[n];
-	}
-	}
-	}
-}
-
 /* 複素 3 成分を (i,j,k,component,reim) に詰め替える (周波数 ifreq 分) */
 static void pack_complex(float *dst, int64_t off,
 	const float *xr, const float *xi,
@@ -247,30 +227,90 @@ int hdf5_open(int with_timeseries)
 	return 1;
 }
 
-void hdf5_write_snapshot(int itime, double t,
-	const real_t *ex, const real_t *ey, const real_t *ez,
-	const real_t *hx, const real_t *hy, const real_t *hz)
+/* このステップでスナップショットを出すか。
+   Hdf5Output / Hdf5Interval はどちらも comm_broadcast() で全ランクに配られる
+   ので、MPI でも全ランクが同じ答を返す。集約の通信をこの判定で括ることで、
+   間引いているときに無駄な転送が起きない。 */
+int hdf5_snapshot_enabled(int itime)
 {
-	float *buf;
-	size_t size;
+	if (!Hdf5Output) return 0;
+	if ((Hdf5Interval > 0) && (itime % Hdf5Interval != 0)) return 0;
+	return 1;
+}
 
+/* === 逐次ストリーミング集約 ===
+   MPI では rank 0 が全域配列 (6 成分ぶん) を抱えると、大きなモデルで
+   rank 0 のノードだけメモリを食い潰す。begin -> put を繰り返す -> commit の
+   形にして、ランクから届いた分をそのまま出力用バッファへ書き込む。
+   保持するのは出力そのものと同じ (Nx+1)(Ny+1)(Nz+1)*3 の 2 本だけになる。 */
+
+static float *snap_e = NULL;   /* 出力用パックバッファ (E) */
+static float *snap_h = NULL;   /* 同 (H) */
+
+int hdf5_snapshot_begin(void)
+{
+	const size_t n = (size_t)node_count() * 3;
+
+	if ((h5file < 0) || (ts_group < 0)) return 0;
+
+	if (snap_e == NULL) {
+		snap_e = (float *)malloc(n * sizeof(float));
+		snap_h = (float *)malloc(n * sizeof(float));
+		if ((snap_e == NULL) || (snap_h == NULL)) {
+			free(snap_e); free(snap_h);
+			snap_e = snap_h = NULL;
+			fprintf(stderr, "*** snapshot buffer malloc error\n");
+			return 0;
+		}
+	}
+
+	/* 更新対象外の成分 (Ex の i=Nx 等) は書かれないので 0 のままにする */
+	memset(snap_e, 0, n * sizeof(float));
+	memset(snap_h, 0, n * sizeof(float));
+
+	return 1;
+}
+
+/* 1 成分の直方体を出力バッファへ書き込む。
+   src は src[(ni*i) + (nj*j) + (nk*k) + n0] で引ける配列
+   (ソルバーのローカル配列でも、受信した箱でも同じ形で渡せる)。 */
+void hdf5_snapshot_put(int field, int comp,
+	int i0, int i1, int j0, int j1, int k0, int k1,
+	const real_t *src, int64_t ni, int64_t nj, int64_t nk, int64_t n0)
+{
+	float *dst = (field == 0) ? snap_e : snap_h;
+	const int64_t sj = (int64_t)(Ny + 1);
+	const int64_t sk = (int64_t)(Nz + 1);
+	int i, j, k;
+
+	if ((dst == NULL) || (src == NULL)) return;
+
+	/* 物理領域だけを書く (冗長領域は出力に含めない) */
+	if (i0 < 0) i0 = 0;
+	if (j0 < 0) j0 = 0;
+	if (k0 < 0) k0 = 0;
+	if (i1 > Nx) i1 = Nx;
+	if (j1 > Ny) j1 = Ny;
+	if (k1 > Nz) k1 = Nz;
+
+	for (i = i0; i <= i1; i++) {
+	for (j = j0; j <= j1; j++) {
+	for (k = k0; k <= k1; k++) {
+		const int64_t d = (((int64_t)i * sj + j) * sk + k) * 3 + comp;
+		dst[d] = (float)src[(ni * i) + (nj * j) + (nk * k) + n0];
+	}
+	}
+	}
+}
+
+/* 集めたスナップショットを 1 枚書き出す */
+void hdf5_snapshot_commit(int itime, double t)
+{
 	if ((h5file < 0) || (ts_group < 0)) return;
-	if ((ex == NULL) || (hx == NULL)) return;
+	if ((snap_e == NULL) || (snap_h == NULL)) return;
 
-	/* hdf5 キーの interval で間引く (0 なら毎出力ステップ)。
-	   呼び出し元が Solver.nout ごとにしか呼ばないので、interval は
-	   Solver.nout の倍数に丸めてある (sol/input_data.c)。 */
-	if ((Hdf5Interval > 0) && (itime % Hdf5Interval != 0)) return;
-
-	size = (size_t)node_count() * 3 * sizeof(float);
-	buf = (float *)malloc(size);
-	if (buf == NULL) return;
-
-	pack_vector(buf, ex, ey, ez);
-	append_slab(ts_e, 5, ts_field_chunk, nsnap, H5T_NATIVE_FLOAT, buf);
-
-	pack_vector(buf, hx, hy, hz);
-	append_slab(ts_h, 5, ts_field_chunk, nsnap, H5T_NATIVE_FLOAT, buf);
+	append_slab(ts_e, 5, ts_field_chunk, nsnap, H5T_NATIVE_FLOAT, snap_e);
+	append_slab(ts_h, 5, ts_field_chunk, nsnap, H5T_NATIVE_FLOAT, snap_h);
 
 	append_slab(ts_itime, 1, ts_scalar_chunk, nsnap, H5T_NATIVE_INT, &itime);
 	append_slab(ts_time,  1, ts_scalar_chunk, nsnap, H5T_NATIVE_DOUBLE, &t);
@@ -282,9 +322,27 @@ void hdf5_write_snapshot(int itime, double t,
 		append_slab(ts_time_h, 1, ts_scalar_chunk, nsnap, H5T_NATIVE_DOUBLE, &th);
 	}
 
-	free(buf);
-
 	nsnap++;
+}
+
+/* 単一プロセス版 (CPU / CUDA) : 全域を自分で持っているのでそのまま詰める。
+   成分ごとの範囲は Yee 格子で実際に更新される範囲。 */
+void hdf5_write_snapshot(int itime, double t,
+	const real_t *ex, const real_t *ey, const real_t *ez,
+	const real_t *hx, const real_t *hy, const real_t *hz)
+{
+	if (!hdf5_snapshot_enabled(itime)) return;
+	if ((ex == NULL) || (hx == NULL)) return;
+	if (!hdf5_snapshot_begin()) return;
+
+	hdf5_snapshot_put(0, 0, 0, Nx, 0, Ny, 0, Nz, ex, Ni, Nj, Nk, N0);
+	hdf5_snapshot_put(0, 1, 0, Nx, 0, Ny, 0, Nz, ey, Ni, Nj, Nk, N0);
+	hdf5_snapshot_put(0, 2, 0, Nx, 0, Ny, 0, Nz, ez, Ni, Nj, Nk, N0);
+	hdf5_snapshot_put(1, 0, 0, Nx, 0, Ny, 0, Nz, hx, Ni, Nj, Nk, N0);
+	hdf5_snapshot_put(1, 1, 0, Nx, 0, Ny, 0, Nz, hy, Ni, Nj, Nk, N0);
+	hdf5_snapshot_put(1, 2, 0, Nx, 0, Ny, 0, Nz, hz, Ni, Nj, Nk, N0);
+
+	hdf5_snapshot_commit(itime, t);
 }
 
 void hdf5_write_freqdomain(
