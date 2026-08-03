@@ -45,7 +45,6 @@ void readhdf5() {
     // HDF5ファイルのオープン
     hid_t file_id = H5Fopen(FILE_NAME, H5F_ACC_RDONLY, H5P_DEFAULT);
     herr_t status;
-    hid_t group_id;
 
     // /metadata グループのオープン
     hid_t metadata_group_id = H5Gopen(file_id, "/metadata", H5P_DEFAULT);
@@ -61,13 +60,15 @@ void readhdf5() {
         void *value;
         hid_t type;
     } metadata[] = {
+        // Ni/Nj/Nk/N0/NN/NGline は int64_t なので INT64 で読むこと
+        // (INT で読むと 4 バイトしか埋まらず上位が壊れる)
         {"Nx", &Nx, H5T_NATIVE_INT},
         {"Ny", &Ny, H5T_NATIVE_INT},
         {"Nz", &Nz, H5T_NATIVE_INT},
-        {"Ni", &Ni, H5T_NATIVE_INT},
-        {"Nj", &Nj, H5T_NATIVE_INT},
-        {"Nk", &Nk, H5T_NATIVE_INT},
-        {"N0", &N0, H5T_NATIVE_INT},
+        {"Ni", &Ni, H5T_NATIVE_INT64},
+        {"Nj", &Nj, H5T_NATIVE_INT64},
+        {"Nk", &Nk, H5T_NATIVE_INT64},
+        {"N0", &N0, H5T_NATIVE_INT64},
         {"NN", &NN, H5T_NATIVE_INT64},
         {"NFreq1", &NFreq1, H5T_NATIVE_INT},
         {"NFreq2", &NFreq2, H5T_NATIVE_INT},
@@ -77,11 +78,11 @@ void readhdf5() {
         {"Ntime", &Ntime, H5T_NATIVE_INT},
         {"Solver_maxiter", &Solver.maxiter, H5T_NATIVE_INT},
         {"Solver_nout", &Solver.nout, H5T_NATIVE_INT},
-        {"NGline", &NGline, H5T_NATIVE_INT},
+        {"NGline", &NGline, H5T_NATIVE_INT64},
         {"IPlanewave", &IPlanewave, H5T_NATIVE_INT}
     };
 
-    for (int i = 0; i < sizeof(metadata) / sizeof(metadata[0]); i++) {
+    for (int i = 0; i < (int)(sizeof(metadata) / sizeof(metadata[0])); i++) {
         dataset_id = H5Dopen(metadata_group_id, metadata[i].name, H5P_DEFAULT);
         status = H5Dread(dataset_id, metadata[i].type, H5S_ALL, H5S_ALL, H5P_DEFAULT, metadata[i].value);
         H5Dclose(dataset_id);
@@ -92,39 +93,82 @@ void readhdf5() {
     status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &Dt);
     H5Dclose(dataset_id);
 
-    // Planewaveの読み込み
-    dataset_id = H5Dopen(metadata_group_id, "Planewave", H5P_DEFAULT);
-    status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &Planewave);
-    H5Dclose(dataset_id);
+    // Planewave の読み込み
+    // planewave_t をそのまま読むと int の pol が混ざって型が壊れるので、
+    // double の並び (15 個) と pol を分けて持たせている (sol/outputHdf5.c)
+    {
+        double pw[15];
+        int n = 0, m;
+        dataset_id = H5Dopen(metadata_group_id, "Planewave", H5P_DEFAULT);
+        status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, pw);
+        H5Dclose(dataset_id);
+        Planewave.theta = pw[n++];
+        Planewave.phi   = pw[n++];
+        for (m = 0; m < 3; m++) Planewave.ei[m] = pw[n++];
+        for (m = 0; m < 3; m++) Planewave.hi[m] = pw[n++];
+        for (m = 0; m < 3; m++) Planewave.ri[m] = pw[n++];
+        for (m = 0; m < 3; m++) Planewave.r0[m] = pw[n++];
+        Planewave.ai = pw[n++];
+
+        dataset_id = H5Dopen(metadata_group_id, "Planewave_pol", H5P_DEFAULT);
+        status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &Planewave.pol);
+        H5Dclose(dataset_id);
+    }
 
     // 配列データの読み込み
+    //
+    // 表示側が扱いやすいようグループを用途別に分けてある (include/ofd_hdf5.h)。
+    // 格子座標と形状は /geometry、収束履歴は /convergence、
+    // 解析条件は /metadata。ここは書き手 (sol/outputHdf5.c) と対になっている
+    // ので、片方を変えたら必ず両方直すこと。
+    hid_t geometry_group_id = H5Gopen(file_id, "/geometry", H5P_DEFAULT);
+    hid_t convergence_group_id = H5Gopen(file_id, "/convergence", H5P_DEFAULT);
+
     struct {
+        hid_t group;
         const char *name;
         double **data;
         size_t size;
     } arrays[] = {
-        {"Xn", &Xn, Nx + 1},
-        {"Yn", &Yn, Ny + 1},
-        {"Zn", &Zn, Nz + 1},
-        {"Xc", &Xc, Nx},
-        {"Yc", &Yc, Ny},
-        {"Zc", &Zc, Nz},
-        {"Eiter", &Eiter, Niter},
-        {"Hiter", &Hiter, Niter},
-        {"VFeed", &VFeed, NFeed * (Solver.maxiter + 1)},
-        {"IFeed", &IFeed, NFeed * (Solver.maxiter + 1)},
-        {"VPoint", &VPoint, NPoint * (Solver.maxiter + 1)},
-        {"Freq1", &Freq1, NFreq1},
-        {"Freq2", &Freq2, NFreq2},
-        {"Gline", &Gline, NGline * 2 * 3}
+        {geometry_group_id,    "Xn",     &Xn,     Nx + 1},
+        {geometry_group_id,    "Yn",     &Yn,     Ny + 1},
+        {geometry_group_id,    "Zn",     &Zn,     Nz + 1},
+        {geometry_group_id,    "Xc",     &Xc,     Nx},
+        {geometry_group_id,    "Yc",     &Yc,     Ny},
+        {geometry_group_id,    "Zc",     &Zc,     Nz},
+        {convergence_group_id, "E",      &Eiter,  Niter},
+        {convergence_group_id, "H",      &Hiter,  Niter},
+        {metadata_group_id,    "VFeed",  &VFeed,  NFeed * (Solver.maxiter + 1)},
+        {metadata_group_id,    "IFeed",  &IFeed,  NFeed * (Solver.maxiter + 1)},
+        {metadata_group_id,    "VPoint", &VPoint, NPoint * (Solver.maxiter + 1)},
+        {metadata_group_id,    "Freq1",  &Freq1,  NFreq1},
+        {metadata_group_id,    "Freq2",  &Freq2,  NFreq2}
     };
 
-    for (int i = 0; i < sizeof(arrays) / sizeof(arrays[0]); i++) {
+    for (int i = 0; i < (int)(sizeof(arrays) / sizeof(arrays[0])); i++) {
+        if ((arrays[i].group < 0) || (arrays[i].size <= 0)) continue;
         *arrays[i].data = (double *)malloc(sizeof(double) * arrays[i].size);
-        dataset_id = H5Dopen(metadata_group_id, arrays[i].name, H5P_DEFAULT);
+        dataset_id = H5Dopen(arrays[i].group, arrays[i].name, H5P_DEFAULT);
+        if (dataset_id < 0) {
+            fprintf(stderr, "*** %s : dataset not found\n", arrays[i].name);
+            continue;
+        }
         status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, *arrays[i].data);
         H5Dclose(dataset_id);
     }
+
+    // Gline は double[2][3] の配列なので上の表 (double**) に入れられない
+    if ((geometry_group_id >= 0) && (NGline > 0)) {
+        Gline = (double (*)[2][3])malloc(sizeof(double) * NGline * 2 * 3);
+        dataset_id = H5Dopen(geometry_group_id, "Gline", H5P_DEFAULT);
+        if (dataset_id >= 0) {
+            status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, Gline);
+            H5Dclose(dataset_id);
+        }
+    }
+
+    if (geometry_group_id >= 0) H5Gclose(geometry_group_id);
+    if (convergence_group_id >= 0) H5Gclose(convergence_group_id);
 
     //サイズ確保
     Feed   =         (feed_t *)malloc(sizeof(feed_t)      * NFeed);
@@ -243,7 +287,7 @@ void readhdf5() {
         for (int ipoint = 0; ipoint < NPoint; ipoint++) {
             const int id = (ipoint * NFreq1) + ifreq;
             const double mag = pow(10, spara_data[(size_t)ifreq * NPoint + ipoint].magnitude_dB / 20);
-            const double ph  = spara_data[(size_t)ifreq * NPoint + ipoint].phase_deg * (M_PI / 180.0);
+            const double ph  = spara_data[(size_t)ifreq * NPoint + ipoint].phase_deg * (PI / 180.0);
             Spara[id] = d_complex(mag * cos(ph), mag * sin(ph));
         }
     }

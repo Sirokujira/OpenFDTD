@@ -24,7 +24,11 @@ HDF5 出力 (time_series_data.h5) の共有 API。
     E     {NFreq2, Nx+1, Ny+1, Nz+1, 3, 2}  複素振幅 (re,im) [V/m] (f4)
     H     {NFreq2, Nx+1, Ny+1, Nz+1, 3, 2}  複素振幅 (re,im) [A/m] (f4)
 /loss/
-    P_loss {NFreq2, Nx+1, Ny+1, Nz+1} 損失電力密度 [W/m^3] (f4)
+    P_loss {NFreq2, Nx+1, Ny+1, Nz+1} 損失電力密度 (f4)
+        p = (1/2)(σe|E|^2 + σm|H|^2)。ただし E/H は近傍界 DFT の値で、
+        sol/setupDft.c が入射スペクトルで正規化しているため
+        **入射振幅 1 あたりの相対量**であり W/m^3 の絶対値ではない。
+        絶対値が要るときは入射電力で換算すること。
 /convergence/
     iter {Niter}, E {Niter}, H {Niter}   収束履歴 (平均電磁界)
 /metadata/                            スカラーと解析条件 (従来どおり)
@@ -108,7 +112,8 @@ void hdf5_write_freqdomain(
 	const float *chy_r, const float *chy_i,
 	const float *chz_r, const float *chz_i);
 
-/* 損失電力密度 [W/m^3] を /loss に書く。ploss は {NFreq2, NN} の配列。
+/* 損失電力密度を /loss に書く。ploss は {NFreq2, NN} の配列。
+   値は入射振幅 1 あたりの相対量 (上のファイル構成の注記を参照)。
    NULL 可 (熱解析なしの場合)。 */
 void hdf5_write_loss(const double *ploss);
 
