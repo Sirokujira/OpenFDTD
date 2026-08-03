@@ -128,6 +128,41 @@ for np in $NPROC_LIST; do
 	fi
 done
 
+# HDF5 を作れない状況でもデッドロックしないこと
+#
+# 集約 (comm_snapshot) は全ランクが参加する送受信なので、rank 0 が
+# 「書けないから」と途中で抜けると他ランクが MPI_Send で待ち続けて
+# ハングする。実際にこの経路でデッドロックしたことがある
+# (症状は「1 プロセスなら正常、2 プロセス以上でハング」)。
+#
+# time_series_data.h5 と同名のディレクトリを置くと H5Fcreate だけが失敗し、
+# ログなど他の出力はそのまま書けるので、この経路だけを再現できる。
+echo "--- HDF5 を作れない場合 (デッドロックしないこと) ---"
+rm -rf blocked && mkdir -p blocked
+cp dipole.ofd blocked/
+(
+	cd blocked
+	mkdir -p time_series_data.h5
+	# タイムアウトが使えない環境では検査を飛ばす
+	if command -v timeout > /dev/null 2>&1; then
+		# shellcheck disable=SC2086
+		if timeout 120 $MPIRUN $MPIRUN_OPTS $BTL_OPTS -n 2 "$SOLVER" $EXTRA -n 1 dipole.ofd > /dev/null 2>&1; then
+			:
+		elif [ $? -eq 124 ]; then
+			echo "  ハングした (デッドロック) -> NG"
+			exit 1
+		fi
+		if grep -q "normal end" ofd.log 2>/dev/null; then
+			echo "  最後まで完走した -> OK"
+		else
+			echo "  normal end に達しなかった -> NG"
+			exit 1
+		fi
+	else
+		echo "  timeout が無いので省略"
+	fi
+) || status=1
+
 if [ $status -ne 0 ]; then
 	echo "*** MPI network-path check failed" >&2
 	exit 1

@@ -941,16 +941,22 @@ void comm_snapshot(int itime, double t)
 	// rank 0 は出力バッファを用意する。全域配列 (6 成分) を抱えず、
 	// 届いた分をその場で出力バッファへ書き込む (逐次ストリーミング集約)。
 	// 保持するのは出力と同じ (Nx+1)(Ny+1)(Nz+1)*3 の 2 本だけ。
+	//
+	// 書き込めない場合 (HDF5 ファイルを作れなかった等) でも **受信だけは
+	// 最後まで行う**。ここで return すると他ランクが MPI_Send で待ち続けて
+	// デッドロックする (1 プロセスなら正常、2 プロセス以上でハングする)。
 	if (commRank == 0) {
-		if (!hdf5_snapshot_begin()) return;
+		const int active = hdf5_snapshot_begin();
 
 		// 自分の担当分 (成分ごとに Yee 格子で実際に更新される範囲)
+		if (active) {
 		hdf5_snapshot_put(0, 0, iMin, iMax - 1, jMin, jMax, kMin, kMax, Ex, Ni, Nj, Nk, N0);
 		hdf5_snapshot_put(0, 1, iMin, iMax, jMin, jMax - 1, kMin, kMax, Ey, Ni, Nj, Nk, N0);
 		hdf5_snapshot_put(0, 2, iMin, iMax, jMin, jMax, kMin, kMax - 1, Ez, Ni, Nj, Nk, N0);
 		hdf5_snapshot_put(1, 0, iMin, iMax, jMin - 1, jMax, kMin - 1, kMax, Hx, Ni, Nj, Nk, N0);
 		hdf5_snapshot_put(1, 1, iMin - 1, iMax, jMin, jMax, kMin - 1, kMax, Hy, Ni, Nj, Nk, N0);
 		hdf5_snapshot_put(1, 2, iMin - 1, iMax, jMin - 1, jMax, kMin, kMax, Hz, Ni, Nj, Nk, N0);
+		}
 
 		// 他ランクから 1 つずつ受け取り、その都度書き込んで捨てる
 		static real_t *rbuf = NULL;
@@ -975,10 +981,13 @@ void comm_snapshot(int itime, double t)
 				rbuf_n = nbox * 6;
 				rbuf = (real_t *)malloc(rbuf_n * sizeof(real_t));
 				if (rbuf == NULL) {
-					rbuf_n = 0;
-					fprintf(stderr, "*** snapshot recv buffer malloc error\n");
+					// ここで return すると残りのランクが送信で待ち続けて
+					// デッドロックする。受信を続けられない以上、
+					// 黙ってハングするより中断する方がまし。
+					fprintf(stderr, "*** snapshot recv buffer malloc error (%zu bytes)\n",
+						(size_t)(nbox * 6 * sizeof(real_t)));
 					fflush(stderr);
-					return;
+					MPI_Abort(MPI_COMM_WORLD, 1);
 				}
 			}
 			MPI_Recv(rbuf, (int)(nbox * 6), MPI_REAL_T, irank, tag, MPI_COMM_WORLD, &status);
@@ -999,6 +1008,7 @@ void comm_snapshot(int itime, double t)
 				const real_t *b_hy = rbuf + (4 * nbox);
 				const real_t *b_hz = rbuf + (5 * nbox);
 
+				if (!active) continue;
 				hdf5_snapshot_put(0, 0, imin, imax - 1, jmin, jmax, kmin, kmax, b_ex, bni, bnj, bnk, bn0);
 				hdf5_snapshot_put(0, 1, imin, imax, jmin, jmax - 1, kmin, kmax, b_ey, bni, bnj, bnk, bn0);
 				hdf5_snapshot_put(0, 2, imin, imax, jmin, jmax, kmin, kmax - 1, b_ez, bni, bnj, bnk, bn0);
@@ -1008,7 +1018,9 @@ void comm_snapshot(int itime, double t)
 			}
 		}
 
-		hdf5_snapshot_commit(itime, t);
+		if (active) {
+			hdf5_snapshot_commit(itime, t);
+		}
 	}
 	// root 以外 : 自分の担当範囲を 1 本のバッファに詰めて送る
 	//
@@ -1032,10 +1044,11 @@ void comm_snapshot(int itime, double t)
 			sbuf_n = nbox * 6;
 			sbuf = (real_t *)malloc(sbuf_n * sizeof(real_t));
 			if (sbuf == NULL) {
-				sbuf_n = 0;
-				fprintf(stderr, "*** snapshot send buffer malloc error\n");
+				// ここで return すると rank 0 が受信で待ち続けてデッドロックする
+				fprintf(stderr, "*** snapshot send buffer malloc error (%zu bytes)\n",
+					(size_t)(nbox * 6 * sizeof(real_t)));
 				fflush(stderr);
-				return;
+				MPI_Abort(MPI_COMM_WORLD, 1);
 			}
 		}
 
