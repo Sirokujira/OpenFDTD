@@ -51,6 +51,14 @@ MPI 版は各ランクが部分領域しか持たず、時間ループ内で全�
 #ifndef _OFD_HDF5_H_
 #define _OFD_HDF5_H_
 
+/* 実装は C (sol/outputHdf5.c) だが、cuda/solve.cu と cuda_mpi/solve.cu は
+   nvcc が C++ としてコンパイルする。ガードが無いと呼び出し側だけ C++ 名前修飾に
+   なり "undefined reference to hdf5_open(int)" でリンクに失敗する
+   (ofd.h も同じ理由で同じガードを持つ)。 */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
 
 #define OFD_H5_FILE "time_series_data.h5"
@@ -86,5 +94,9 @@ void hdf5_write_convergence(int niter, const double *eiter, const double *hiter)
 
 /* /metadata のスカラー類を書いてファイルを閉じる。 */
 void hdf5_close(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif  /* _OFD_HDF5_H_ */
