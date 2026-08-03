@@ -28,7 +28,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake gcc g++ libhdf5-dev
+          # hdf5-tools は h5ls (hdf5_layout_check.sh) に必要
+          sudo apt-get install -y cmake gcc g++ libhdf5-dev hdf5-tools
 
       - name: Configure (CPU only)
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DWITH_CUDA=OFF -DWITH_MPI=OFF
@@ -62,6 +63,12 @@ jobs:
       # (熱解析レイヤは CPU 版のみなので build-mpi / build-cuda では実行しない)
       - name: Validation test — thermal per-cell material
         run: sh data/sample/thermal_material_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-thermal
+
+      # HDF5 の構成 : 書き手 (sol/outputHdf5.c) と読み手 (include/ofd_hdf5.h の
+      # 契約 / post/readhdf5.c) のパスがずれていないか。readhdf5() は既定で
+      # 呼ばれないため、ずれても実行時には気付けない。
+      - name: Validation test — HDF5 layout
+        run: sh data/sample/hdf5_layout_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-h5layout
 
       # 平面波励振 : 完全導体球の散乱断面積を Mie 厳密解と比較する。
       # 平面波の波源設定が壊れると断面積が 0 や NaN になるが "normal end" では
@@ -99,6 +106,7 @@ jobs:
             /tmp/smoke/*.log
             /tmp/smoke-tpa/*.log
             /tmp/smoke-thermal/*.log
+            /tmp/smoke-h5layout/*.log
             /tmp/smoke-rcs/*.log
           if-no-files-found: ignore
 

@@ -42,7 +42,7 @@ GUI フロントエンド [OpenFDTD-X](https://github.com/Sirokujira/OpenFDTD-X)
 | `/geometry` | `Xn/Yn/Zn` (節点座標), `Xc/Yc/Zc`, `Gline` (形状の線分) | 格子・構造の描画 |
 | `/timeseries` | `E`/`H` {nsnap, Nx+1, Ny+1, Nz+1, 3} の**瞬時値**, `time`/`time_H`/`itime` | 時間領域アニメーション |
 | `/freqdomain` | `E`/`H` {NFreq2, Nx+1, Ny+1, Nz+1, 3, 2} の複素振幅, `freq` | 振幅・位相の分布図 |
-| `/loss` | `P_loss` {NFreq2, Nx+1, Ny+1, Nz+1} [W/m³] | 発熱・損失分布 |
+| `/loss` | `P_loss` {NFreq2, Nx+1, Ny+1, Nz+1}（入射振幅 1 あたりの相対量）| 発熱・損失分布 |
 | `/convergence` | `iter`/`E`/`H` | 収束履歴のグラフ |
 | `/metadata` | `Nx..Nz`, `Dt`, `Freq1/2`, `VFeed`/`IFeed`, `Surface`, `input_impedance` 他 | 解析条件・Zin 等 |
 

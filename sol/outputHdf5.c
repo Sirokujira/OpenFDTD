@@ -505,7 +505,27 @@ void hdf5_close(void)
 		write_scalar_int(gid, "NFeed", NFeed);
 		write_scalar_int(gid, "NPoint", NPoint);
 		write_scalar_int(gid, "IPlanewave", IPlanewave);
+		write_scalar_int(gid, "Niter", Niter);
+		write_scalar_int(gid, "NGline", NGline);
 		write_scalar_double(gid, "Dt", Dt);
+
+		/* 平面波の波源パラメータ (post/readhdf5.c が復元する)。
+		   planewave_t をそのまま書くと int の pol が混ざって型が壊れるので、
+		   double の並びと pol を分けて書く。 */
+		{
+			double pw[15];
+			int n = 0, m;
+			pw[n++] = Planewave.theta;
+			pw[n++] = Planewave.phi;
+			for (m = 0; m < 3; m++) pw[n++] = Planewave.ei[m];
+			for (m = 0; m < 3; m++) pw[n++] = Planewave.hi[m];
+			for (m = 0; m < 3; m++) pw[n++] = Planewave.ri[m];
+			for (m = 0; m < 3; m++) pw[n++] = Planewave.r0[m];
+			pw[n++] = Planewave.ai;
+			dims[0] = 15;
+			write_dataset(gid, "Planewave", 1, dims, H5T_NATIVE_DOUBLE, pw);
+			write_scalar_int(gid, "Planewave_pol", Planewave.pol);
+		}
 
 		if (NFreq1 > 0) {
 			dims[0] = (hsize_t)NFreq1;
@@ -515,8 +535,8 @@ void hdf5_close(void)
 			dims[0] = (hsize_t)NFreq2;
 			write_dataset(gid, "Freq2", 1, dims, H5T_NATIVE_DOUBLE, Freq2);
 		}
-		if ((NPoint > 0) && (Ntime > 0) && (VPoint != NULL)) {
-			dims[0] = (hsize_t)((size_t)NPoint * Ntime);
+		if ((NPoint > 0) && (VPoint != NULL)) {
+			dims[0] = (hsize_t)((size_t)NPoint * (Solver.maxiter + 1));
 			write_dataset(gid, "VPoint", 1, dims, H5T_NATIVE_DOUBLE, VPoint);
 		}
 
@@ -535,8 +555,10 @@ void hdf5_close(void)
 			write_dataset(gid, "Surface", 1, dims, memtype, Surface);
 			H5Tclose(memtype);
 		}
-		if ((NFeed > 0) && (Ntime > 0)) {
-			dims[0] = (hsize_t)((size_t)NFeed * Ntime);
+		/* 配列の確保長は Solver.maxiter+1 (Ntime は収束で早期終了した実長)。
+		   読み手が確保長で読めるよう、確保長そのままの大きさで書く。 */
+		if ((NFeed > 0) && (Solver.maxiter >= 0)) {
+			dims[0] = (hsize_t)((size_t)NFeed * (Solver.maxiter + 1));
 			if (VFeed != NULL) write_dataset(gid, "VFeed", 1, dims, H5T_NATIVE_DOUBLE, VFeed);
 			if (IFeed != NULL) write_dataset(gid, "IFeed", 1, dims, H5T_NATIVE_DOUBLE, IFeed);
 		}
