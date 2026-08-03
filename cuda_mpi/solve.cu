@@ -69,7 +69,7 @@ void solve(int io, double *tdft, FILE *fp)
     // CPU+MPI 版 (mpi/solve.c) と同じ修正で、出力されるファイルの内容・構造は
     // 従来と同一。→ CUDA+MPI ビルドにも並列 HDF5 は不要。
     if (commRank == 0) {
-        hdf5_open(0);
+        hdf5_open(1);
     }
 
     // time step iteration
@@ -243,10 +243,19 @@ void solve(int io, double *tdft, FILE *fp)
                 // copy near3d from device to host
                 memcopy3_gpu();
 
-                // グループの作成前に同期
-                //MPI_Barrier(MPI_COMM_WORLD);
+            }
 
-                // HDF5 : 瞬時値スナップショットは MPI では未対応 (include/ofd_hdf5.h)
+            // HDF5 : 瞬時値スナップショット
+            // comm_snapshot() は全ランクが参加する集団操作なので、
+            // io (= rank 0 か) の条件の外で呼ぶこと (mpi/solve.c と同じ)。
+            if (Hdf5Output) {
+                if (GPU) cudaDeviceSynchronize();
+                comm_snapshot();
+                if (commRank == 0) {
+                    setupSize(1, 1, 1, 0);
+                    hdf5_write_snapshot(itime, t, g_Ex, g_Ey, g_Ez, g_Hx, g_Hy, g_Hz);
+                    setupSize(Npx, Npy, Npz, commRank);
+                }
             }
 
             // check convergence
@@ -327,17 +336,24 @@ void solve(int io, double *tdft, FILE *fp)
         if (NFreq2) {
             comm_near3d();
         }
+    }
 
-        // HDF5 : 全域に集約したあとで書く。
-        // comm_near3d() は rank 0 の索引を全域 (setupSize(1,1,1,0)) に張り替え、
-        // g_cEx_r 等に全ランク分を集めるので、ここで初めて全域の値が書ける。
-        if (commRank == 0) {
-            hdf5_write_freqdomain(
-                g_cEx_r, g_cEx_i, g_cEy_r, g_cEy_i, g_cEz_r, g_cEz_i,
-                g_cHx_r, g_cHx_i, g_cHy_r, g_cHy_i, g_cHz_r, g_cHz_i);
-            hdf5_write_convergence(Niter, Eiter, Hiter);
-            hdf5_close();
-        }
+    // HDF5 : 周波数領域の最終結果・収束履歴・メタデータ
+    //
+    // 1 プロセスのときは上の集約ブロックごとスキップされるので、この書き出しを
+    // 中に置くと 1 プロセスだけ /freqdomain が出ない。ブロックの外に置き、
+    // 集約の有無で参照する配列を切り替える (mpi/solve.c と同じ)。
+    if (commRank == 0) {
+        const int gathered = (commSize > 1) && NFreq2;
+        hdf5_write_freqdomain(
+            gathered ? g_cEx_r : cEx_r, gathered ? g_cEx_i : cEx_i,
+            gathered ? g_cEy_r : cEy_r, gathered ? g_cEy_i : cEy_i,
+            gathered ? g_cEz_r : cEz_r, gathered ? g_cEz_i : cEz_i,
+            gathered ? g_cHx_r : cHx_r, gathered ? g_cHx_i : cHx_i,
+            gathered ? g_cHy_r : cHy_r, gathered ? g_cHy_i : cHy_i,
+            gathered ? g_cHz_r : cHz_r, gathered ? g_cHz_i : cHz_i);
+        hdf5_write_convergence(Niter, Eiter, Hiter);
+        hdf5_close();
     }
 }
 

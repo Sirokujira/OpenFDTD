@@ -21,7 +21,7 @@ GUI フロントエンド [OpenFDTD-X](https://github.com/Sirokujira/OpenFDTD-X)
 ### 入出力
 
 - 入力: `.ofd` テキスト (`sol/input_data.c` が解釈。mesh/material/geometry/
-  feed/planewave/point/abc/pbc/frequency1/2/solver/tpa/waveamp +
+  feed/planewave/point/abc/pbc/frequency1/2/solver/tpa/waveamp/hdf5 +
   `plot*` ポストキー)
 - 出力:
   - `ofd.log` — 実行ログ (収束履歴、`=== normal end ===` で正常終了)
@@ -57,19 +57,39 @@ GUI フロントエンド [OpenFDTD-X](https://github.com/Sirokujira/OpenFDTD-X)
 - `E` と `H` は leapfrog により半ステップずれます。`time` が `E` の時刻、
   `time_H = time - Dt/2` が `H` の時刻です。
 
+#### 出力の制御 (`hdf5` キー)
+
+```
+hdf5 = <output> [interval]
+  output   : 0 = HDF5 を出力しない / 1 = 出力する (既定 1)
+  interval : 瞬時値スナップショットの間隔 [ステップ]
+             (既定 0 = solver の nout に従う)
+```
+
+省略時は従来と完全に同じ挙動です。表示用の時系列は容量が大きいので、
+不要なら `hdf5 = 0`、粗くてよければ `interval` を大きく取ります
+(dipole で `hdf5 = 1 200` にすると 12 枚 → 3 枚、5.2MB → 1.6MB)。
+`interval` は瞬時値を出せるのが `solver` の `nout` ごとなので、
+その倍数に切り上げられます。
+
 #### 実装ごとの対応状況
 
 | 実装 | `/timeseries` (瞬時値) | その他のグループ |
 |---|---|---|
 | CPU (`ofd`) | 対応 | 対応 |
+| MPI (`ofd_mpi`) | 対応 | 対応 |
 | CUDA (`ofd_cuda`) | 対応 | 対応 |
-| MPI (`ofd_mpi`) | **非対応** | 対応 (`comm_near3d()` の集約後に書くため全域が正しい) |
-| CUDA+MPI (`ofd_cuda_mpi`) | **非対応** | 対応 |
+| CUDA+MPI (`ofd_cuda_mpi`) | 対応 | 対応 |
 
-MPI 版で瞬時値を出さないのは、各ランクが部分領域しか持たず、時間ループ内で
-全域を集める通信が別途必要なためです。従来は rank 0 の部分領域だけを全域と
-偽って書いていました。`/freqdomain` は CPU 版と**ビット一致**することを
-dipole サンプルで確認しています (2 プロセス、`h5diff`)。
+MPI 版は各ランクが部分領域しか持たないため、`mpi/comm.c` の
+`comm_snapshot()` が時間ループ内で全域を rank 0 に集めてから書きます
+(`/freqdomain` は従来どおり `comm_near3d()` の集約後)。
+`comm_snapshot()` は全ランクが参加する集団操作なので、**rank 条件の中で
+呼んではいけません** (デッドロックします)。
+
+dipole サンプルで、`/timeseries` `/freqdomain` `/geometry` のいずれも
+**1 / 2 / 4 プロセスの MPI 実行が CPU 版とビット一致**することを
+`h5diff` で確認しています。
 
 ### 熱解析レイヤ (実験的)
 

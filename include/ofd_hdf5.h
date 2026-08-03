@@ -40,12 +40,16 @@ HDF5 出力 (time_series_data.h5) の共有 API。
 
 === 実装ごとの対応状況 ===
 
-/timeseries (瞬時値) は CPU (ofd) と CUDA (ofd_cuda) のみ。
-MPI 版は各ランクが部分領域しか持たず、時間ループ内で全域を集める通信を
-新設する必要があるため未対応 (従来は rank 0 の部分領域だけを全域と偽って
-書いていた。それよりは出力しない方が安全なので止めてある)。
-/geometry /freqdomain /loss /convergence /metadata は 4 実装すべてで出力する
-(いずれも時間ループ後、MPI では comm_near3d() の集約後に書くため正しい)。
+4 実装 (CPU / MPI / CUDA / CUDA+MPI) すべてで全グループを出力する。
+MPI 版の /timeseries は mpi/comm.c の comm_snapshot() が時間ループ内で
+全域を rank 0 に集めてから書く (dipole で CPU 版とビット一致を確認済み)。
+/freqdomain は comm_near3d() の集約後に書く。
+
+出力は hdf5 キーで制御できる (sol/input_data.c):
+    hdf5 = <output> [interval]
+      output   : 0 = 出力しない / 1 = 出力する (既定 1)
+      interval : 瞬時値スナップショットの間隔 [ステップ]
+                 (既定 0 = solver の nout に従う。nout の倍数に切り上げる)
 */
 
 #ifndef _OFD_HDF5_H_

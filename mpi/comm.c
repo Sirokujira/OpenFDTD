@@ -144,6 +144,9 @@ void comm_broadcast(void)
 			d_num += 6 * NInductor;
 			c_num += 1 * NInductor;
 		}
+		// HDF5 出力 (hdf5 キー) : Hdf5Output, Hdf5Interval
+		i_num += 2;
+
 		// TPA (二光子吸収) : NTpa + material id、および CW 波源のパラメータ
 		i_num += 1 + (1 * NTpa);
 		d_num += 2 + (1 * NTpa);
@@ -269,6 +272,10 @@ void comm_broadcast(void)
 			d_buf[d_id++] = Inductor[n].e;
 			d_buf[d_id++] = Inductor[n].esum;
 		}
+
+		// HDF5 出力 (hdf5 キー)
+		i_buf[i_id++] = Hdf5Output;
+		i_buf[i_id++] = Hdf5Interval;
 
 		// TPA (二光子吸収)
 		i_buf[i_id++] = NTpa;
@@ -455,6 +462,9 @@ void comm_broadcast(void)
 		// これを配り忘れると rank != 0 で NTpa = 0 となり TPA 処理を丸ごと
 		// スキップするため、ランク間で集団操作の呼び出しが食い違って
 		// デッドロックする (実際に踏んだ)。
+		Hdf5Output   = i_buf[i_id++];
+		Hdf5Interval = i_buf[i_id++];
+
 		NTpa      = i_buf[i_id++];
 		WaveAmp   = d_buf[d_id++];
 		WaveOmega = d_buf[d_id++];
@@ -901,5 +911,229 @@ int comm_inproc(int i, int j, int k)
 	return b || ((commRank == commSize - 1) && ((i == Nx) || (j == Ny) || (k == Nz)));
 #else
 	return i && j && k;  // dummy
+#endif
+}
+
+
+// 瞬時値スナップショットを rank 0 の全域配列 (g_Ex..g_Hz) に集める
+//
+// comm_near3d() は解析の最後に 1 度だけ呼ばれ、rank 0 の索引を
+// setupSize(1,1,1,0) で全域に張り替えて終わる (以後ローカル索引は使わない)。
+// スナップショットは時間ループの途中で何度も呼ぶのでその手は使えず、
+// ローカル索引を保ったまま全域配列へ詰める。
+//
+// **全ランクが必ず同じ回数・同じ順序で呼ぶこと。** rank 条件の中に入れると
+// 送受信の相手が食い違ってデッドロックする (TPA で実際に踏んだ轍)。
+//
+// 各成分の範囲は comm_near3d() と同一にしてある。Yee 格子で更新対象外に
+// なる最外縁 (Ex の i=Nx, Ey の j=Ny, Ez の k=Nz) は書かれないので、
+// 確保時のゼロ初期化がそのまま残る (非 MPI 版と同じ値になる)。
+void comm_snapshot(void)
+{
+#ifdef _MPI
+	const int tag = 0;
+	MPI_Status status;
+	int isend[11], irecv[11];
+	int64_t g_n, l_n;
+
+	if (NN <= 0) return;
+
+	// 全域の索引 (Ni, Nj, Nk, N0, NN) を 1 度だけ取得して覚えておく。
+	// setupSize() を使うので添字の計算式を二重に持たない。
+	static int64_t G_Ni = 0, G_Nj = 0, G_Nk = 0, G_N0 = 0, G_NN = 0;
+	if (G_NN <= 0) {
+		setupSize(1, 1, 1, 0);
+		G_Ni = Ni;  G_Nj = Nj;  G_Nk = Nk;  G_N0 = N0;  G_NN = NN;
+		setupSize(Npx, Npy, Npz, commRank);   // ローカル索引に戻す
+
+		if (commRank == 0) {
+			const size_t size = G_NN * sizeof(real_t);
+			g_Ex = (real_t *)malloc(size);
+			g_Ey = (real_t *)malloc(size);
+			g_Ez = (real_t *)malloc(size);
+			g_Hx = (real_t *)malloc(size);
+			g_Hy = (real_t *)malloc(size);
+			g_Hz = (real_t *)malloc(size);
+			if ((g_Ex == NULL) || (g_Ey == NULL) || (g_Ez == NULL) ||
+			    (g_Hx == NULL) || (g_Hy == NULL) || (g_Hz == NULL)) {
+				fprintf(stderr, "*** snapshot buffer malloc error (NN=%zu)\n", (size_t)G_NN);
+				fflush(stderr);
+				G_NN = 0;
+				return;
+			}
+			memset(g_Ex, 0, size);  memset(g_Ey, 0, size);  memset(g_Ez, 0, size);
+			memset(g_Hx, 0, size);  memset(g_Hy, 0, size);  memset(g_Hz, 0, size);
+		}
+	}
+	if (G_NN <= 0) return;
+
+	// root : 自分の分をコピーする
+	if (commRank == 0) {
+		for (int i = iMin; i <  iMax; i++) {
+		for (int j = jMin; j <= jMax; j++) {
+		for (int k = kMin; k <= kMax; k++) {
+			g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
+			g_Ex[g_n] = Ex[NA(i, j, k)];
+		}
+		}
+		}
+		for (int i = iMin; i <= iMax; i++) {
+		for (int j = jMin; j <  jMax; j++) {
+		for (int k = kMin; k <= kMax; k++) {
+			g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
+			g_Ey[g_n] = Ey[NA(i, j, k)];
+		}
+		}
+		}
+		for (int i = iMin; i <= iMax; i++) {
+		for (int j = jMin; j <= jMax; j++) {
+		for (int k = kMin; k <  kMax; k++) {
+			g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
+			g_Ez[g_n] = Ez[NA(i, j, k)];
+		}
+		}
+		}
+		for (int i = iMin - 0; i <= iMax; i++) {
+		for (int j = jMin - 1; j <= jMax; j++) {
+		for (int k = kMin - 1; k <= kMax; k++) {
+			g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
+			g_Hx[g_n] = Hx[NA(i, j, k)];
+		}
+		}
+		}
+		for (int i = iMin - 1; i <= iMax; i++) {
+		for (int j = jMin - 0; j <= jMax; j++) {
+		for (int k = kMin - 1; k <= kMax; k++) {
+			g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
+			g_Hy[g_n] = Hy[NA(i, j, k)];
+		}
+		}
+		}
+		for (int i = iMin - 1; i <= iMax; i++) {
+		for (int j = jMin - 1; j <= jMax; j++) {
+		for (int k = kMin - 0; k <= kMax; k++) {
+			g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
+			g_Hz[g_n] = Hz[NA(i, j, k)];
+		}
+		}
+		}
+	}
+
+	// root : 他ランクから受け取る
+	if (commRank == 0) {
+		for (int irank = 1; irank < commSize; irank++) {
+			MPI_Recv(irecv, 11, MPI_INT, irank, tag, MPI_COMM_WORLD, &status);
+			const int imin = irecv[0];
+			const int imax = irecv[1];
+			const int jmin = irecv[2];
+			const int jmax = irecv[3];
+			const int kmin = irecv[4];
+			const int kmax = irecv[5];
+			const int ni   = irecv[6];
+			const int nj   = irecv[7];
+			const int nk   = irecv[8];
+			const int n0   = irecv[9];
+			const int nn   = irecv[10];
+
+			real_t *recv = (real_t *)malloc(nn * sizeof(real_t));
+			if (recv == NULL) continue;
+
+			// Ex
+			MPI_Recv(recv, nn, MPI_REAL_T, irank, tag, MPI_COMM_WORLD, &status);
+			for (int i = imin; i <  imax; i++) {
+			for (int j = jmin; j <= jmax; j++) {
+			for (int k = kmin; k <= kmax; k++) {
+				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
+				l_n = (ni * i) + (nj * j) + (nk * k) + n0;
+				g_Ex[g_n] = recv[l_n];
+			}
+			}
+			}
+
+			// Ey
+			MPI_Recv(recv, nn, MPI_REAL_T, irank, tag, MPI_COMM_WORLD, &status);
+			for (int i = imin; i <= imax; i++) {
+			for (int j = jmin; j <  jmax; j++) {
+			for (int k = kmin; k <= kmax; k++) {
+				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
+				l_n = (ni * i) + (nj * j) + (nk * k) + n0;
+				g_Ey[g_n] = recv[l_n];
+			}
+			}
+			}
+
+			// Ez
+			MPI_Recv(recv, nn, MPI_REAL_T, irank, tag, MPI_COMM_WORLD, &status);
+			for (int i = imin; i <= imax; i++) {
+			for (int j = jmin; j <= jmax; j++) {
+			for (int k = kmin; k <  kmax; k++) {
+				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
+				l_n = (ni * i) + (nj * j) + (nk * k) + n0;
+				g_Ez[g_n] = recv[l_n];
+			}
+			}
+			}
+
+			// Hx
+			MPI_Recv(recv, nn, MPI_REAL_T, irank, tag, MPI_COMM_WORLD, &status);
+			for (int i = imin - 0; i <= imax; i++) {
+			for (int j = jmin - 1; j <= jmax; j++) {
+			for (int k = kmin - 1; k <= kmax; k++) {
+				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
+				l_n = (ni * i) + (nj * j) + (nk * k) + n0;
+				g_Hx[g_n] = recv[l_n];
+			}
+			}
+			}
+
+			// Hy
+			MPI_Recv(recv, nn, MPI_REAL_T, irank, tag, MPI_COMM_WORLD, &status);
+			for (int i = imin - 1; i <= imax; i++) {
+			for (int j = jmin - 0; j <= jmax; j++) {
+			for (int k = kmin - 1; k <= kmax; k++) {
+				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
+				l_n = (ni * i) + (nj * j) + (nk * k) + n0;
+				g_Hy[g_n] = recv[l_n];
+			}
+			}
+			}
+
+			// Hz
+			MPI_Recv(recv, nn, MPI_REAL_T, irank, tag, MPI_COMM_WORLD, &status);
+			for (int i = imin - 1; i <= imax; i++) {
+			for (int j = jmin - 1; j <= jmax; j++) {
+			for (int k = kmin - 0; k <= kmax; k++) {
+				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
+				l_n = (ni * i) + (nj * j) + (nk * k) + n0;
+				g_Hz[g_n] = recv[l_n];
+			}
+			}
+			}
+
+			free(recv);
+		}
+	}
+	// root 以外 : 自分の領域を送る
+	else {
+		isend[0] = iMin;
+		isend[1] = iMax;
+		isend[2] = jMin;
+		isend[3] = jMax;
+		isend[4] = kMin;
+		isend[5] = kMax;
+		isend[6] = (int)Ni;
+		isend[7] = (int)Nj;
+		isend[8] = (int)Nk;
+		isend[9] = (int)N0;
+		isend[10] = (int)NN;
+		MPI_Send(isend, 11, MPI_INT, 0, tag, MPI_COMM_WORLD);
+
+		MPI_Send(Ex, (int)NN, MPI_REAL_T, 0, tag, MPI_COMM_WORLD);
+		MPI_Send(Ey, (int)NN, MPI_REAL_T, 0, tag, MPI_COMM_WORLD);
+		MPI_Send(Ez, (int)NN, MPI_REAL_T, 0, tag, MPI_COMM_WORLD);
+		MPI_Send(Hx, (int)NN, MPI_REAL_T, 0, tag, MPI_COMM_WORLD);
+		MPI_Send(Hy, (int)NN, MPI_REAL_T, 0, tag, MPI_COMM_WORLD);
+		MPI_Send(Hz, (int)NN, MPI_REAL_T, 0, tag, MPI_COMM_WORLD);
+	}
 #endif
 }

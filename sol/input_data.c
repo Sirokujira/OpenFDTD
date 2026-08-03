@@ -61,6 +61,10 @@ int input_data(FILE *fp)
 	WaveAmp = 0;
 	WaveOmega = 0;
 
+	// HDF5 出力 (既定はキー省略時に従来と完全に同じ挙動)
+	Hdf5Output = 1;
+	Hdf5Interval = 0;   // 0 = Solver.nout に従う
+
 	iABC = 0;  // Mur-1st
 	PBCx = PBCy = PBCz = 0;
 
@@ -469,6 +473,20 @@ int input_data(FILE *fp)
 				}
 			}
 		}
+		else if (!strcmp(strkey, "hdf5")) {
+			// hdf5 = <output> [interval]
+			//   output   : 0 = HDF5 を出力しない / 1 = 出力する (既定 1)
+			//   interval : 瞬時値スナップショットの間隔 [ステップ]
+			//              (既定 0 = solver の nout に従う)
+			// 表示用の時系列は容量が大きいので、不要なら 0、粗くてよければ
+			// interval を大きく取る。省略時は従来と完全に同じ挙動。
+			if (ntoken > 2) {
+				Hdf5Output = atoi(token[2]);
+			}
+			if (ntoken > 3) {
+				Hdf5Interval = atoi(token[3]);
+			}
+		}
 		else if (!strcmp(strkey, "timestep")) {
 			Dt = atof(token[2]);
 		}
@@ -534,6 +552,13 @@ int input_data(FILE *fp)
 		printf("%s\n", "*** feed and planewave");
 		return 1;
 	}
+	// HDF5 の瞬時値スナップショットは Solver.nout ごとにしか出せないので、
+	// hdf5 キーの interval はその倍数に切り上げる
+	// (solver の maxiter を nout の倍数に丸めているのと同じ扱い)。
+	if ((Hdf5Interval > 0) && (Solver.nout > 0) && (Hdf5Interval % Solver.nout != 0)) {
+		Hdf5Interval = (Hdf5Interval / Solver.nout + 1) * Solver.nout;
+	}
+
 	if ((Solver.maxiter <= 0) || (Solver.nout <= 0)) {
 		printf("%s\n", "*** invalid solver data");
 		return 1;

@@ -53,7 +53,7 @@ void solve(int io, double *tdft, FILE *fp)
     // 書き手が rank 0 だけである以上、並列ドライバを使う理由が無いので
     // 直列ドライバに戻す。出力されるファイルの内容・構造は従来と同一。
     if (commRank == 0) {
-        hdf5_open(0);
+        hdf5_open(1);
     }
 
     // time step iteration
@@ -220,12 +220,21 @@ void solve(int io, double *tdft, FILE *fp)
                 fprintf(stdout, "%s\n", str);
                 fflush(fp);
                 fflush(stdout);
-                
-                // グループの作成前に同期
-                //MPI_Barrier(MPI_COMM_WORLD);
-                // HDF5 : 瞬時値スナップショットは MPI では未対応
-                // (各ランクが部分領域しか持たず、従来は rank 0 の部分領域だけを
-                //  全域と偽って書いていた。include/ofd_hdf5.h を参照)
+            }
+
+            // HDF5 : 瞬時値スナップショット
+            // comm_snapshot() は全ランクが参加する集団操作なので、
+            // io (= rank 0 か) の条件の外で呼ぶこと。中に入れると送受信の
+            // 相手が食い違ってデッドロックする。
+            // 全域に集めたあと rank 0 だけが書く。索引は書き込みの間だけ
+            // 全域 (setupSize(1,1,1,0)) に張り替えて戻す。
+            if (Hdf5Output) {
+                comm_snapshot();
+                if (commRank == 0) {
+                    setupSize(1, 1, 1, 0);
+                    hdf5_write_snapshot(itime, t, g_Ex, g_Ey, g_Ez, g_Hx, g_Hy, g_Hz);
+                    setupSize(Npx, Npy, Npz, commRank);
+                }
             }
 
             // check convergence
@@ -299,16 +308,26 @@ void solve(int io, double *tdft, FILE *fp)
         if (NFreq2) {
             comm_near3d();
         }
+    }
 
-        // HDF5 : 全域に集約したあとで書く。
-        // comm_near3d() は rank 0 の索引を全域 (setupSize(1,1,1,0)) に張り替え、
-        // g_cEx_r 等に全ランク分を集めるので、ここで初めて全域の値が書ける。
-        if (commRank == 0) {
-            hdf5_write_freqdomain(
-                g_cEx_r, g_cEx_i, g_cEy_r, g_cEy_i, g_cEz_r, g_cEz_i,
-                g_cHx_r, g_cHx_i, g_cHy_r, g_cHy_i, g_cHz_r, g_cHz_i);
-            hdf5_write_convergence(Niter, Eiter, Hiter);
-            hdf5_close();
-        }
+    // HDF5 : 周波数領域の最終結果・収束履歴・メタデータ
+    //
+    // 1 プロセスのときは上の集約ブロックごとスキップされるので、この書き出しを
+    // 中に置くと 1 プロセスだけ /freqdomain が出ない。ブロックの外に置き、
+    // 集約の有無で参照する配列を切り替える:
+    //   commSize > 1 : comm_near3d() が全域に集めた g_c*
+    //                  (索引も setupSize(1,1,1,0) で全域に張り替え済み)
+    //   commSize = 1 : 集約が不要なので c* がそのまま全域
+    if (commRank == 0) {
+        const int gathered = (commSize > 1) && NFreq2;
+        hdf5_write_freqdomain(
+            gathered ? g_cEx_r : cEx_r, gathered ? g_cEx_i : cEx_i,
+            gathered ? g_cEy_r : cEy_r, gathered ? g_cEy_i : cEy_i,
+            gathered ? g_cEz_r : cEz_r, gathered ? g_cEz_i : cEz_i,
+            gathered ? g_cHx_r : cHx_r, gathered ? g_cHx_i : cHx_i,
+            gathered ? g_cHy_r : cHy_r, gathered ? g_cHy_i : cHy_i,
+            gathered ? g_cHz_r : cHz_r, gathered ? g_cHz_i : cHz_i);
+        hdf5_write_convergence(Niter, Eiter, Hiter);
+        hdf5_close();
     }
 }
