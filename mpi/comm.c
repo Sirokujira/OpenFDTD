@@ -933,8 +933,8 @@ void comm_snapshot(void)
 #ifdef _MPI
 	const int tag = 0;
 	MPI_Status status;
-	int isend[11], irecv[11];
-	int64_t g_n, l_n;
+	int isend[6], irecv[6];
+	int64_t g_n;
 
 	if (NN <= 0) return;
 
@@ -1019,121 +1019,174 @@ void comm_snapshot(void)
 		}
 	}
 
-	// root : 他ランクから受け取る
+	// === 転送 ===
+	//
+	// 送るのはローカル配列全体 (NN) ではなく、rank 0 が実際に読む範囲だけ。
+	// NN は ABC の余白 (Mur なら 1 層、PML なら cPML.l 層) を各面に含むので、
+	// PML 8 層・1 辺 100 セルの領域なら (100+16)^3 / (100+2)^3 ≒ 1.5 倍の
+	// 無駄になる。下側に 1 層だけ広げた箱
+	//     [iMin-1, iMax] x [jMin-1, jMax] x [kMin-1, kMax]
+	// が H 成分の読み出し範囲 (jMin-1 等) を含む最小の直方体なので、これを
+	// 6 成分ぶん 1 本の連続バッファに詰めて 1 回で送る
+	// (従来は 6 回の MPI_Send に分かれていた)。
+	// 取り出す範囲は従来と 1 バイトも変えていないので、結果は不変。
+
 	if (commRank == 0) {
+		// 受信バッファは最大サイズまで伸ばして使い回す (毎回の malloc を避ける)
+		static real_t *rbuf = NULL;
+		static size_t rbuf_n = 0;
+
 		for (int irank = 1; irank < commSize; irank++) {
-			MPI_Recv(irecv, 11, MPI_INT, irank, tag, MPI_COMM_WORLD, &status);
+			MPI_Recv(irecv, 6, MPI_INT, irank, tag, MPI_COMM_WORLD, &status);
 			const int imin = irecv[0];
 			const int imax = irecv[1];
 			const int jmin = irecv[2];
 			const int jmax = irecv[3];
 			const int kmin = irecv[4];
 			const int kmax = irecv[5];
-			const int ni   = irecv[6];
-			const int nj   = irecv[7];
-			const int nk   = irecv[8];
-			const int n0   = irecv[9];
-			const int nn   = irecv[10];
 
-			real_t *recv = (real_t *)malloc(nn * sizeof(real_t));
-			if (recv == NULL) continue;
+			const int nib = imax - imin + 2;
+			const int njb = jmax - jmin + 2;
+			const int nkb = kmax - kmin + 2;
+			const size_t nbox = (size_t)nib * njb * nkb;
+
+			if (nbox * 6 > rbuf_n) {
+				free(rbuf);
+				rbuf_n = nbox * 6;
+				rbuf = (real_t *)malloc(rbuf_n * sizeof(real_t));
+				if (rbuf == NULL) {
+					rbuf_n = 0;
+					fprintf(stderr, "*** snapshot recv buffer malloc error\n");
+					fflush(stderr);
+					return;
+				}
+			}
+			MPI_Recv(rbuf, (int)(nbox * 6), MPI_REAL_T, irank, tag, MPI_COMM_WORLD, &status);
+
+			// 箱の中の添字 (i,j,k は絶対値、原点は imin-1, jmin-1, kmin-1)
+			#define BOX(i,j,k) ((((size_t)((i) - (imin - 1)) * njb + ((j) - (jmin - 1))) * nkb) + ((k) - (kmin - 1)))
+
+			const real_t *b_ex = rbuf + (0 * nbox);
+			const real_t *b_ey = rbuf + (1 * nbox);
+			const real_t *b_ez = rbuf + (2 * nbox);
+			const real_t *b_hx = rbuf + (3 * nbox);
+			const real_t *b_hy = rbuf + (4 * nbox);
+			const real_t *b_hz = rbuf + (5 * nbox);
 
 			// Ex
-			MPI_Recv(recv, nn, MPI_REAL_T, irank, tag, MPI_COMM_WORLD, &status);
 			for (int i = imin; i <  imax; i++) {
 			for (int j = jmin; j <= jmax; j++) {
 			for (int k = kmin; k <= kmax; k++) {
 				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-				l_n = (ni * i) + (nj * j) + (nk * k) + n0;
-				g_Ex[g_n] = recv[l_n];
+				g_Ex[g_n] = b_ex[BOX(i, j, k)];
 			}
 			}
 			}
 
 			// Ey
-			MPI_Recv(recv, nn, MPI_REAL_T, irank, tag, MPI_COMM_WORLD, &status);
 			for (int i = imin; i <= imax; i++) {
 			for (int j = jmin; j <  jmax; j++) {
 			for (int k = kmin; k <= kmax; k++) {
 				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-				l_n = (ni * i) + (nj * j) + (nk * k) + n0;
-				g_Ey[g_n] = recv[l_n];
+				g_Ey[g_n] = b_ey[BOX(i, j, k)];
 			}
 			}
 			}
 
 			// Ez
-			MPI_Recv(recv, nn, MPI_REAL_T, irank, tag, MPI_COMM_WORLD, &status);
 			for (int i = imin; i <= imax; i++) {
 			for (int j = jmin; j <= jmax; j++) {
 			for (int k = kmin; k <  kmax; k++) {
 				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-				l_n = (ni * i) + (nj * j) + (nk * k) + n0;
-				g_Ez[g_n] = recv[l_n];
+				g_Ez[g_n] = b_ez[BOX(i, j, k)];
 			}
 			}
 			}
 
 			// Hx
-			MPI_Recv(recv, nn, MPI_REAL_T, irank, tag, MPI_COMM_WORLD, &status);
 			for (int i = imin - 0; i <= imax; i++) {
 			for (int j = jmin - 1; j <= jmax; j++) {
 			for (int k = kmin - 1; k <= kmax; k++) {
 				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-				l_n = (ni * i) + (nj * j) + (nk * k) + n0;
-				g_Hx[g_n] = recv[l_n];
+				g_Hx[g_n] = b_hx[BOX(i, j, k)];
 			}
 			}
 			}
 
 			// Hy
-			MPI_Recv(recv, nn, MPI_REAL_T, irank, tag, MPI_COMM_WORLD, &status);
 			for (int i = imin - 1; i <= imax; i++) {
 			for (int j = jmin - 0; j <= jmax; j++) {
 			for (int k = kmin - 1; k <= kmax; k++) {
 				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-				l_n = (ni * i) + (nj * j) + (nk * k) + n0;
-				g_Hy[g_n] = recv[l_n];
+				g_Hy[g_n] = b_hy[BOX(i, j, k)];
 			}
 			}
 			}
 
 			// Hz
-			MPI_Recv(recv, nn, MPI_REAL_T, irank, tag, MPI_COMM_WORLD, &status);
 			for (int i = imin - 1; i <= imax; i++) {
 			for (int j = jmin - 1; j <= jmax; j++) {
 			for (int k = kmin - 0; k <= kmax; k++) {
 				g_n = (G_Ni * i) + (G_Nj * j) + (G_Nk * k) + G_N0;
-				l_n = (ni * i) + (nj * j) + (nk * k) + n0;
-				g_Hz[g_n] = recv[l_n];
+				g_Hz[g_n] = b_hz[BOX(i, j, k)];
 			}
 			}
 			}
 
-			free(recv);
+			#undef BOX
 		}
 	}
-	// root 以外 : 自分の領域を送る
+	// root 以外 : 自分の担当範囲を 1 本のバッファに詰めて送る
 	else {
-		isend[0] = iMin;
-		isend[1] = iMax;
-		isend[2] = jMin;
-		isend[3] = jMax;
-		isend[4] = kMin;
-		isend[5] = kMax;
-		isend[6] = (int)Ni;
-		isend[7] = (int)Nj;
-		isend[8] = (int)Nk;
-		isend[9] = (int)N0;
-		isend[10] = (int)NN;
-		MPI_Send(isend, 11, MPI_INT, 0, tag, MPI_COMM_WORLD);
+		static real_t *sbuf = NULL;
+		static size_t sbuf_n = 0;
 
-		MPI_Send(Ex, (int)NN, MPI_REAL_T, 0, tag, MPI_COMM_WORLD);
-		MPI_Send(Ey, (int)NN, MPI_REAL_T, 0, tag, MPI_COMM_WORLD);
-		MPI_Send(Ez, (int)NN, MPI_REAL_T, 0, tag, MPI_COMM_WORLD);
-		MPI_Send(Hx, (int)NN, MPI_REAL_T, 0, tag, MPI_COMM_WORLD);
-		MPI_Send(Hy, (int)NN, MPI_REAL_T, 0, tag, MPI_COMM_WORLD);
-		MPI_Send(Hz, (int)NN, MPI_REAL_T, 0, tag, MPI_COMM_WORLD);
+		const int imin = iMin, imax = iMax;
+		const int jmin = jMin, jmax = jMax;
+		const int kmin = kMin, kmax = kMax;
+		const int nib = imax - imin + 2;
+		const int njb = jmax - jmin + 2;
+		const int nkb = kmax - kmin + 2;
+		const size_t nbox = (size_t)nib * njb * nkb;
+
+		if (sbuf_n < nbox * 6) {
+			free(sbuf);
+			sbuf_n = nbox * 6;
+			sbuf = (real_t *)malloc(sbuf_n * sizeof(real_t));
+			if (sbuf == NULL) {
+				sbuf_n = 0;
+				fprintf(stderr, "*** snapshot send buffer malloc error\n");
+				fflush(stderr);
+				return;
+			}
+		}
+
+		{
+			size_t m = 0;
+			const real_t *src[6];
+			src[0] = Ex; src[1] = Ey; src[2] = Ez;
+			src[3] = Hx; src[4] = Hy; src[5] = Hz;
+			for (int c = 0; c < 6; c++) {
+				const real_t *s = src[c];
+				for (int i = imin - 1; i <= imax; i++) {
+				for (int j = jmin - 1; j <= jmax; j++) {
+				for (int k = kmin - 1; k <= kmax; k++) {
+					sbuf[m++] = s[NA(i, j, k)];
+				}
+				}
+				}
+			}
+		}
+
+		isend[0] = imin;
+		isend[1] = imax;
+		isend[2] = jmin;
+		isend[3] = jmax;
+		isend[4] = kmin;
+		isend[5] = kmax;
+		MPI_Send(isend, 6, MPI_INT, 0, tag, MPI_COMM_WORLD);
+		MPI_Send(sbuf, (int)(nbox * 6), MPI_REAL_T, 0, tag, MPI_COMM_WORLD);
 	}
+
 #endif
 }
