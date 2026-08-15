@@ -23,6 +23,22 @@ GUI フロントエンド [OpenFDTD-X](https://github.com/Sirokujira/OpenFDTD-X)
 - 入力: `.ofd` テキスト (`sol/input_data.c` が解釈。mesh/material/geometry/
   feed/planewave/point/abc/pbc/frequency1/2/solver/tpa/waveamp/hdf5 +
   `plot*` ポストキー)
+
+  `geometry` の形状コードは次の 14 種類です (`sol/ingeometry.c`)。
+
+  | コード | 形状 | パラメータ数 |
+  |---|---|---|
+  | 1 | 直方体 | 6 |
+  | 2 | 楕円体 | 6 |
+  | 11 / 12 / 13 | X / Y / Z 円柱 | 6 |
+  | 31 / 32 / 33 | X / Y / Z 三角柱 | 8 |
+  | 41 / 42 / 43 | X / Y / Z 角錐台 | 8 |
+  | 51 / 52 / 53 | X / Y / Z 円錐台 | 8 |
+
+  `sol/ingeometry.c` には 54〜56 と 61〜66 のコードも書かれていますが、
+  まとめてコメントアウトされていて**有効ではありません**。これらを指定すると
+  入力の時点でエラーになります (以前は素通りして `No. of Geometries` には
+  数えられるのに物体がどこにも作られず、`normal end` で終わっていました)。
 - 出力:
   - `ofd.log` — 実行ログ (収束履歴、`=== normal end ===` で正常終了)
   - `ofd.out` — ポスト処理用バイナリ (ポストの正本)
