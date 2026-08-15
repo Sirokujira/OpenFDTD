@@ -1,0 +1,43 @@
+OpenFDTD 4 2
+title = lossy block (feed) for vector/no-vector check
+#
+# ベクトル化更新経路 (-vector) の検証専用サンプル : 給電励振
+# (data/sample/vector_check.sh が使う。解析解との比較はしない)
+#
+# 中身の狙いは vector_lossy_pw.ofd と同じ (C1 != C2 かつ D1 != D2 の
+# セルを作る) だが、**波源が feed** である点が違う。
+#
+# sol/update{Ex..Hz}.c は波源で実装が分かれていて
+#   NFeed      != 0 -> update*_f_vector / update*_f_no_vector
+#   IPlanewave != 0 -> update*_p_vector / update*_p_no_vector
+# の 4 系統 x 6 成分 = 12 関数がある。平面波のサンプルだけでは _f_ 側の
+# 2 系統が実行されないので、給電側も損失材料付きで用意する。
+#
+# 誘電体・磁性体の損失値は vector_lossy_pw.ofd と同じ
+#   ε_r = 4, σ_e = 0.1 S/m, μ_r = 2, σ_m = 0.05 Ω/m
+# ダイポール (PEC 細線) の周りに損失ブロックを置いて、給電点から見た
+# インピーダンスに損失が効くようにしてある。
+#
+material = 1 4 0.1 2 0.05
+xmesh = -0.075 30 0.075
+ymesh = -0.075 30 0.075
+zmesh = -0.075 10 -0.025 11 0.025 10 0.075
+geometry = 1 1 0 0 0 0 -0.025 0.025
+geometry = 2 1 0.01 0.03 -0.02 0.02 -0.02 0.02
+feed = Z 0 0 0 1 0 50
+frequency1 = 2e9 3e9 10
+frequency2 = 3e9 3e9 0
+solver = 500 50 1e-3
+plotiter = 1
+plotzin = 1
+plotfar1d = X 72
+far1dstyle = 0
+far1dcomponent = 1 0 0
+far1ddb = 1
+plotnear2d = E X 0.03
+near2ddim = 1 1
+near2ddb = 0
+near2dcontour = 0
+near2dobj = 1
+near2dnoinc = 0
+end
