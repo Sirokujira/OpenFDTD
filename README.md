@@ -209,6 +209,53 @@ sh data/sample/sphere_rcs_check.sh /path/to/bin/ofd /tmp/rcs
 全周波数帯の平面波サンプルの断面積が恒等的に 0 になっていました)。
 近傍界 DFT の正規化係数が 0 になる場合は `sol/setupDft.c` がエラーで停止します。
 
+### ベクトル化更新経路 (`-vector`) の検証
+
+界の更新には**独立した 2 つの実装**があり、実行時オプションで切り替えます。
+
+| オプション | 実装 |
+|---|---|
+| `-no-vector` (既定) | セル毎に材料 ID (`iEx`..`iHz`) を引き、材料テーブル `C1/C2/D1/D2` の係数で更新する。PEC は `if` 分岐で特別扱いする |
+| `-vector` | `setup_vector()` が全セル分の係数を配列 `K1Ex`..`K2Hz` に展開しておき、分岐なしで更新する。PEC は分岐ではなく `K1 = K2 = 0` という係数で表現する |
+
+対象は `sol/update{Ex..Hz}.c` の 12 関数 (`_f_`/`_p_` × vector/no_vector) と
+`sol/setup_vector.c`、および CUDA 側の同名カーネルです。4 実装すべてが
+`-vector` を受け付けます。
+
+同じ入力を両経路で流し、`ofd.log` の完全一致と HDF5 の界データの一致
+(相対 1e-5) を判定します。
+
+```sh
+sh data/sample/vector_check.sh /path/to/bin/ofd /tmp/vector
+
+# MPI / CUDA にも同じスクリプトを掛けられる
+OFD_LAUNCHER="mpirun -n 2" OFD_ARGS="-p 1 1 2" \
+  sh data/sample/vector_check.sh /path/to/bin/ofd_mpi /tmp/vector-mpi
+OFD_ARGS="-cpu" sh data/sample/vector_check.sh /path/to/bin/ofd_cuda /tmp/vector-cuda
+```
+
+判定用に `data/sample/vector_lossy_feed.ofd` と
+`data/sample/vector_lossy_pw.ofd` を置いています。**既存 27 サンプルでは
+この検証が成立しない**ためです:
+
+- 更新係数は `C1 = εr/denom, C2 = 1/denom` (H 側は `D1 = μr/denom,
+  D2 = 1/denom`) なので、**真空では `C1 = C2 = 1`、PEC では `C1 = C2 = 0`**
+  になります。つまり真空 + PEC だけの構成では、`C1` と `C2` (`D1` と `D2`)
+  を取り違えても結果が 1 ビットも変わりません。`σ_m > 0` の材料は既存
+  サンプルにひとつも無く、`debye.ofd` の損失材料は `material` に定義
+  されているだけで `geometry` に配置されていませんでした
+- 入射項は入射方向に依存します。既存サンプルが使う軸平行入射
+  (`planewave = 90 0 1`) では入射界が `E = (0,0,1)`, `H = (0,1,0)` となり、
+  **Ex / Ey / Hx / Hz の入射項が恒等的に 0** になります。さらに垂直偏波では
+  入射 H の z 成分が、水平偏波では入射 E の z 成分が、方向に依らず厳密に 0
+  になるため、6 成分を網羅するには斜め入射かつ両偏波が要ります
+
+この 2 点を満たすよう、εr = 4 / μr = 2 の材料を実際に配置し、斜め入射
+(θ=55°, φ=35°) を両偏波で流しています。`sol/update*.c` の係数参照 4 箇所
+(回転項・入射 dfi 項・入射 fi 項・`_f_`/`_p_`) × 6 成分 = 24 通りに
+意図的な取り違えを入れて、**24 通りすべてがこの検証で NG になる**ことを
+確認しています (追加サンプルを外すと 24 通りとも素通りします)。
+
 ### 二光子吸収 (TPA) 非線形材料
 
 メタマテリアル装荷 Si 導波路の光活性化関数
@@ -326,13 +373,14 @@ grep "normal end" ofd.log
 - push / PR ごとに次の 5 ジョブを実行する
   - `build-cpu` / `build-macos` / `build-windows` — Linux (gcc) / macOS
     (AppleClang) / Windows (MSVC) で CPU ビルド + dipole サンプルの
-    スモーク実行 (`normal end` 判定) + TPA スラブ検証 (解析解 ±7% 判定)。
-    Linux / macOS では熱解析のセル毎材料検証、Linux ではさらに
-    平面波散乱の Mie 検証 (完全導体球 RCS) を実行
+    スモーク実行 (`normal end` 判定) + TPA スラブ検証 (解析解 ±7% 判定) +
+    ベクトル化更新経路の一致検証。Linux / macOS では熱解析のセル毎材料検証、
+    Linux ではさらに平面波散乱の Mie 検証 (完全導体球 RCS) を実行
   - `build-mpi` — `ofd_mpi` をビルドし、dipole の 1/2 プロセス一致、
-    TPA の領域分割不変性 (5 通り)、2 プロセスでの解析解を判定
+    TPA の領域分割不変性 (5 通り)、2 プロセスでの解析解、
+    2 プロセスでのベクトル化経路の一致を判定
   - `build-cuda` — `ofd_cuda` と `ofd_cuda_mpi` を nvcc でビルドし、
-    `-cpu` 実行で解析解と領域分割不変性を判定
+    `-cpu` 実行で解析解・領域分割不変性・ベクトル化経路の一致を判定
     (ランナーに GPU が無いためカーネル起動構成は未検証)
 - ビルド成果物は artifact (`ofd-linux-x64` / `ofd-macos-arm64`) に保存
 - `v*` タグを push すると GitHub Release に `ofd-<platform>.tar.gz` が

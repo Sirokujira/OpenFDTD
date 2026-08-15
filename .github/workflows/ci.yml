@@ -77,6 +77,12 @@ jobs:
       - name: Validation test — plane wave RCS (PEC sphere vs Mie)
         run: sh data/sample/sphere_rcs_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-rcs
 
+      # ベクトル化更新経路 (-vector) : 界の更新には -no-vector と -vector の
+      # 2 実装があり、-vector は CI でも検証スクリプトでも一度も実行されて
+      # いなかった (sol/update*.c の 12 関数 + sol/setup_vector.c が未検証)。
+      - name: Validation test — vector / no-vector consistency
+        run: sh data/sample/vector_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-vector
+
       - name: Upload binaries (artifact)
         uses: actions/upload-artifact@v4
         with:
@@ -160,6 +166,10 @@ jobs:
       # (熱解析レイヤは CPU 版のみなので build-mpi / build-cuda では実行しない)
       - name: Validation test — thermal per-cell material
         run: sh data/sample/thermal_material_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-thermal
+
+      # ベクトル化更新経路 (-vector) と通常経路の一致 (build-cpu と同じ判定)
+      - name: Validation test — vector / no-vector consistency
+        run: sh data/sample/vector_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-vector
 
       - name: Upload binaries (artifact)
         uses: actions/upload-artifact@v4
@@ -262,6 +272,16 @@ jobs:
           if ($fail) { Write-Error "TPA validation failed (tolerance 7%)"; exit 1 }
           Write-Host "TPA validation passed (tolerance 7%)"
 
+      # ベクトル化更新経路 (-vector) と通常経路の一致。
+      # 判定は「同じ入力を 2 つの経路で流して結果を突き合わせる」だけで、
+      # 期待値を持たない (TPA のように OS ごとに書き直す必要が無い) ので、
+      # PowerShell へ移植せず Git Bash でそのまま .sh を回す。
+      # h5diff は vcpkg の静的ビルドで PATH に来ないが、スクリプトが
+      # command -v で見て無ければ ofd.log の比較だけに落とす。
+      - name: Validation test — vector / no-vector consistency
+        shell: bash
+        run: sh data/sample/vector_check.sh "$GITHUB_WORKSPACE/bin/ofd.exe" /tmp/smoke-vector
+
       - name: Upload binaries (artifact)
         uses: actions/upload-artifact@v4
         with:
@@ -352,6 +372,16 @@ jobs:
           OFD_ARGS: -p 1 1 2
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-tpa
 
+      # ベクトル化更新経路 (-vector) は領域分割と組み合わせたときも
+      # 通常経路と一致すること (係数配列 K1/K2 の展開範囲は
+      # iMin..iMax などランクごとの担当範囲で決まるため、
+      # 1 プロセスで合っていても分割時にずれ得る)
+      - name: Validation test — vector / no-vector consistency (2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -p 1 1 2
+        run: sh data/sample/vector_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-vector
+
       - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -397,6 +427,14 @@ jobs:
         env:
           OFD_ARGS: -cpu
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda" /tmp/cuda-tpa
+
+      # CUDA 版も -vector を受け付ける (cuda/update*.cu が VECTOR を見て
+      # 係数配列と材料 ID 参照を切り替える)。-cpu 実行なのでカーネル起動
+      # 構成は踏まないが、係数の展開と使い方の整合は判定できる。
+      - name: Validation test — vector / no-vector consistency (ofd_cuda, CPU execution mode)
+        env:
+          OFD_ARGS: -cpu
+        run: sh data/sample/vector_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda" /tmp/cuda-vector
 
       - name: Configure / build (CUDA + MPI)
         run: |
