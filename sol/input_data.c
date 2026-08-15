@@ -267,8 +267,28 @@ int input_data(FILE *fp)
 					ngeom = 8;
 					break;
 				default:
-					ngeom = 0;
-					break;
+					// 未実装の形状コードを黙って受け付けない。
+					//
+					// 以前はここで ngeom = 0 として素通りさせていたため、
+					// 例えば shape = 61 と書くとパラメータが 1 つも読まれない
+					// まま NGeometry だけ増え、ingeometry() は 61 を判定
+					// できないので **物体がどこにも作られなかった**。
+					// それでいてログには "No. of Geometries = 1" と出て
+					// "normal end" で終わるので、構造が丸ごと消えている
+					// ことに気付けない (実測: shape = 61 にした cube.ofd は
+					// geometry 行を消した場合と結果が完全に一致した)。
+					//
+					// sol/ingeometry.c には 54〜56 と 61〜66 のコードも
+					// 書かれているが、まとめてコメントアウトされていて
+					// 有効ではない。有効な形状は下の 14 種類:
+					//   1 直方体 / 2 楕円体
+					//   11,12,13 円柱 (X,Y,Z)
+					//   31,32,33 三角柱 (X,Y,Z)
+					//   41,42,43 四角錐台 (X,Y,Z)
+					//   51,52,53 円錐台 (X,Y,Z)
+					printf("*** invalid geometry shape %d (data #%d)\n",
+					       Geometry[NGeometry].shape, (int)NGeometry + 1);
+					return 1;
 			}
 			if (ntoken < 4 + ngeom) {
 				printf(errfmt3, strkey, (int)NGeometry + 1);

@@ -153,7 +153,13 @@ int ingeometry(double x, double y, double z, int shape, double *g, double eps)
 		const double h1z = g[5] / 2;
 		const double h2y = g[6] / 2;
 		const double h2z = g[7] / 2;
-		const double f = (fabs(x1 - x2) > eps) ? (x - x1) / (x2 - x1) : 0.5;
+		// 厚さ 0 (x1 == x2) のときの f は 0 (= 底面の寸法を使う)。
+		// ここは以前 X 角錐台だけが 0.5 (底面と上面の平均) で、
+		// Y/Z 角錐台 (42/43) と 3 軸の円錐台 (51/52/53) はすべて 0 だった。
+		// 同じ厚さ 0 の物体を軸を変えて置くだけで大きさが変わってしまう
+		// (底面 2x2 / 上面 1x1 なら X では半幅 0.75、Y/Z では 1.0) ので、
+		// 多数派の 0 に揃えた。tests/test_ingeometry.c が 3 軸の一致を見る。
+		const double f = (fabs(x1 - x2) > eps) ? (x - x1) / (x2 - x1) : 0;
 		const double hy = h1y + f * (h2y - h1y);
 		const double hz = h1z + f * (h2z - h1z);
 		if (((x - x1) * (x - x2) < eps2) &&
