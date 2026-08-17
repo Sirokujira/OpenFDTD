@@ -38,6 +38,7 @@ ctest --test-dir build --output-on-failure   # 全件
 | `vfeed` | `sol/vfeed.c` | 給電波形のピーク振幅 1 への正規化、奇対称性、遅延の平行移動 |
 | `ingeometry` | `sol/ingeometry.c` | 直方体・楕円体・円柱・三角柱・角錐台・円錐台の内外判定、未知コードは常に外 |
 | `geomlines` | `sol/geomlines.c` | 形状ごとの線分数、**mode=1 が mode=0 の見積もりを超えて書き込まないこと** (バッファオーバーラン防止) |
+| `setupid` | `sol/setupId.c` | 形状→Yee 格子の焼き付け。6 成分が正しい実位置 (節点/セル中心) を参照すること (**半セルずれの検出**)、shape=1 の getspan 高速経路と汎用経路の一致、ドメイン端に接する物体の焼き付け漏れ、PEC/分散性材料の表面補正 (`setupId_surface`) |
 
 ## テストを足すとき
 
@@ -50,11 +51,16 @@ CUDA (`SOURCES2`) と MPI (`SOURCES3`) は手書きリストなので、
 CPU だけ通って CUDA/MPI が静かにリンクエラーになる
 (`.claude/rules/build-targets.md`)。テストは必ず `tests/` に置く。
 
-対象にできるのは **ofd.h のグローバル状態を必要としない翻訳単位**に限る。
-現状 `sol/utils.c` `sol/vfeed.c` `sol/ingeometry.c` `sol/geomlines.c` が
-それに当たる (いずれも `ofd.h` を include していない)。
-グローバルを読むロジック (`finc` の `WaveAmp`/`WaveOmega` など) は、
-`tests/test_main.c` が `MAIN` を定義して実体を用意しているので利用できる。
+グローバル状態を必要としない翻訳単位 (`sol/utils.c` `sol/vfeed.c`
+`sol/ingeometry.c` `sol/geomlines.c` — いずれも `ofd.h` を include
+していない) はそのままテストできる。グローバルを読むロジックも、
+`tests/test_main.c` が `MAIN` を定義して実体を用意しているので、
+テスト側でグローバルを組み立てれば対象にできる —
+`finc` (`WaveAmp`/`WaveOmega` を読む) と `setupid` (格子・材料・
+ID 配列一式をテスト内で構築する。`tests/test_setupid.c` の
+`setup_grid()` が雛形) がその例。ただし後者は他のテストと同じ
+プロセスで走るので、確保したものは後片付けし、書き換えた
+グローバルは元に戻すこと。
 
 ## 期待値の作り方
 

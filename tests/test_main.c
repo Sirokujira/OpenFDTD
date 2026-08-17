@@ -38,6 +38,7 @@ void test_utils(void);
 void test_vfeed(void);
 void test_ingeometry(void);
 void test_geomlines(void);
+void test_setupid(void);
 
 typedef struct {
 	const char *name;
@@ -51,6 +52,7 @@ static const testcase_t tests[] = {
 	{"vfeed",      test_vfeed},
 	{"ingeometry", test_ingeometry},
 	{"geomlines",  test_geomlines},
+	{"setupid",    test_setupid},
 };
 
 static const int ntest = (int)(sizeof(tests) / sizeof(tests[0]));
