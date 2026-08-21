@@ -181,8 +181,12 @@ OFD_LAUNCHER="mpirun --oversubscribe -n 2" OFD_ARGS="-p 1 1 2" \
 | `build-cuda` | `ofd_cuda`, `ofd_cuda_mpi` | `-cpu` 実行で TPA 解析解 + 分割不変性 |
 
 ランナーに GPU は無いので CUDA 版の検証は `-cpu` (GPU を使わない実行モード) で行う。
-セル毎の演算は `__host__ __device__` の共通関数なので物理の正しさは判定できるが、
-**カーネル起動構成と実機 GPU 実行は未検証**。
+セル毎の演算は `__host__ __device__` の共通関数なので物理の正しさは判定できる。
+実機 GPU 実行は 2026-08-21 に Windows (MSVC + CUDA 13.1 + MS-MPI, RTX 3060) で
+`ofd_cuda` / `ofd_cuda_mpi` が dipole で CPU 版と一致することを確認した。その際
+HDM (既定) で HDF5 スナップショットが device メモリを host から読んで落ちる
+バグを修正した (`snapshot_host_fields`)。`-cpu` / UM では出ないので、GPU 側を
+触ったら実機で HDM のまま一度走らせること。
 
 Windows は vcpkg (`hdf5[core,zlib]:x64-windows-static-md`)。szip は libaec の 429 で
 落ちるため使わない。`build-cuda` は distro の `nvidia-cuda-toolkit` と gcc の組み合わせに

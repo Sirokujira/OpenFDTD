@@ -68,6 +68,12 @@ sh data/sample/sphere_rcs_check.sh       bin/ofd /tmp/rcs-check      # 平面波
 - `build-mpi` — `ofd_mpi` (1/2 プロセス一致・分割不変性・解析解)
 - `build-cuda` — `ofd_cuda` / `ofd_cuda_mpi` (`-cpu` 実行で判定)
 
-ランナーに GPU は無いので、CUDA 版は `-cpu` 実行で物理まで判定し、
-**カーネル起動構成と実機 GPU 実行のみ未検証**。
+ランナーに GPU は無いので、CUDA 版は `-cpu` 実行で物理まで判定する。
+実機 GPU 実行は 2026-08-21 に Windows (MSVC 14.36 + CUDA 13.1 + MS-MPI 10.1,
+RTX 3060) で `ofd_cuda` / `ofd_cuda_mpi` (2 ランク) が dipole で CPU 版と
+一致することを確認した。このとき **HDM (既定) で HDF5 スナップショットが
+device メモリを host から読んで落ちる**バグを見つけて直している
+(`cuda/solve.cu` / `cuda_mpi/solve.cu` の `snapshot_host_fields`) — `-cpu` と
+UM では出ないので CI では検出できない種類の不具合。GPU 側を触ったら
+実機で一度は HDM (既定) のまま走らせること。
 タグ `v*` push で Release にバイナリ添付。

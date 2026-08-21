@@ -321,7 +321,7 @@ sh data/sample/tpa_decomp_check.sh /path/to/bin/ofd_mpi /tmp/tpa-decomp
 |---|---|---|
 | CPU (`ofd`) | 対応 | CI (3 OS) で解析解 ±7% を判定 |
 | MPI (`ofd_mpi`) | 対応 | 7 通りの領域分割で CPU 版と完全一致。CI (`build-mpi`) で分割不変性と解析解を判定 |
-| CUDA (`ofd_cuda`) | 対応 | `-cpu` 実行で解析解 3 点合格。CI (`build-cuda`) で判定。GPU カーネルは nvcc でコンパイル検証のみ (実機 GPU 未検証) |
+| CUDA (`ofd_cuda`) | 対応 | `-cpu` 実行で解析解 3 点合格。CI (`build-cuda`) で判定。実機 GPU は 2026-08-21 に RTX 3060 (CUDA 13.1, Windows) で dipole が CPU 版と一致することを確認 |
 | CUDA+MPI (`ofd_cuda_mpi`) | 対応 | `-cpu` 実行で 5 通りの領域分割が `ofd_cuda` と完全一致 (0.646838)、解析解 3 点合格 |
 
 MPI 版では `updateTpa` が `|E|²` の colocated 近似のために隣接セルの E 成分を
@@ -348,8 +348,19 @@ GPU 側へ反映されていなかったためです。CW パラメータは `pa
 
 CUDA 版の検証は `ofd_cuda -cpu` (GPU を使わない実行モード) で行っています。
 セル毎の演算は `__host__ __device__` の共通関数なので GPU カーネルと同じ式を
-通りますが、**カーネル起動構成と実機 GPU での実行は未検証**です
-(この環境に GPU が無いため。nvcc によるコンパイル・リンクは通っています)。
+通ります。実機 GPU での実行は 2026-08-21 に Windows (MSVC 14.36 + CUDA 13.1 +
+MS-MPI 10.1, RTX 3060) で確認しました — `ofd_cuda` と `mpiexec -n 2 ofd_cuda_mpi`
+が dipole で収束し、インピーダンス表が CPU 版と表示精度で一致します
+(収束履歴は float の総和順序で 6 桁目のみ異なる)。このとき見つかった
+「HDM (既定) で HDF5 スナップショットが device メモリを host から読んで
+0xC0000005 で落ちる」バグは修正済みです (`-cpu` と UM では出ないため CI では
+検出できませんでした)。CI 自体は今も GPU の無いランナーで `-cpu` 実行です。
+
+Windows (MSVC) での CUDA / MPI ビルドは CUDA Toolkit を管理者権限なしで
+展開した環境でも通ります。手順は OpenFDTD-X の
+`docs/windows-cuda-mpi-build.md` を参照してください (CUDA 13 は sm_60/70 を
+サポートしないため、`-DCMAKE_CUDA_ARCHITECTURES=<実機の値>` を渡すか、
+既定 (nvcc 13 以降は 75) に任せます)。
 
 | 実行 | 透過率 |
 |---|---|

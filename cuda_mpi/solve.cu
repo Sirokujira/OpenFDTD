@@ -16,6 +16,49 @@ solve.cu (CUDA + MPI)
 static void setup_cuda_mpi();
 static void copy_to_host();
 
+// ── HDM (GPU かつ UM でない) 実行での HDF5 スナップショット ──────────────
+// Ex..Hz は cudaMalloc した device メモリなので host から直接読めない
+// (読むと 0xC0000005 で落ちる — RTX 3060 実機で確認。UM / -cpu では出ない)。
+// スナップショットを書くステップだけ host の作業バッファへコピーし、
+// そちらを出力側に渡す。UM / CPU 実行では場の配列をそのまま返す。
+static real_t *h_snap[6] = { NULL, NULL, NULL, NULL, NULL, NULL };
+static int     h_snap_failed = 0;
+
+// 戻り値: 1 = f[0..5] に host から読める Ex,Ey,Ez,Hx,Hy,Hz を入れた /
+//         0 = 作業バッファを確保できない (出力を諦める)
+static int snapshot_host_fields(const real_t *f[6])
+{
+	real_t *dev[6];
+	dev[0] = Ex; dev[1] = Ey; dev[2] = Ez;
+	dev[3] = Hx; dev[4] = Hy; dev[5] = Hz;
+	if (!GPU || UM) {
+		for (int n = 0; n < 6; n++) f[n] = dev[n];
+		return 1;
+	}
+	if (h_snap_failed) return 0;
+	const size_t size = (size_t)NN * sizeof(real_t);
+	for (int n = 0; n < 6; n++) {
+		if (h_snap[n] == NULL) h_snap[n] = (real_t *)malloc(size);
+		if (h_snap[n] == NULL) {
+			fprintf(stderr, "*** snapshot host buffer malloc error (%zu bytes) : HDF5 /timeseries is skipped\n", size);
+			fflush(stderr);
+			h_snap_failed = 1;
+			return 0;
+		}
+		cudaMemcpy(h_snap[n], dev[n], size, cudaMemcpyDeviceToHost);
+		f[n] = h_snap[n];
+	}
+	return 1;
+}
+
+static void snapshot_host_free(void)
+{
+	for (int n = 0; n < 6; n++) {
+		free(h_snap[n]);
+		h_snap[n] = NULL;
+	}
+}
+
 void solve(int io, double *tdft, FILE *fp)
 {
     // HDF5ファイルの作成
@@ -248,9 +291,16 @@ void solve(int io, double *tdft, FILE *fp)
             // HDF5 : 瞬時値スナップショット
             // comm_snapshot() は全ランクが参加する集団操作なので、
             // io (= rank 0 か) の条件の外で呼ぶこと (mpi/solve.c と同じ)。
+            // HDM では device → host コピーを挟む (snapshot_host_fields)。
+            // 確保に失敗したランクだけが抜けると他ランクが受信で待ち続ける
+            // ので、その場合は中断する (mpi/comm.c の送受信バッファと同じ扱い)。
             if (hdf5_snapshot_enabled(itime)) {
                 if (GPU) cudaDeviceSynchronize();
-                comm_snapshot(itime, t);
+                const real_t *f[6];
+                if (!snapshot_host_fields(f)) {
+                    MPI_Abort(MPI_COMM_WORLD, 1);
+                }
+                comm_snapshot_fields(itime, t, f[0], f[1], f[2], f[3], f[4], f[5]);
             }
 
             // check convergence
@@ -307,6 +357,7 @@ void solve(int io, double *tdft, FILE *fp)
     // (この関数の末尾を参照)
 
     // free
+    snapshot_host_free();
     memfree2_gpu();
 
     // copy near3d from device to host
