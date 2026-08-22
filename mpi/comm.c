@@ -931,6 +931,17 @@ int comm_inproc(int i, int j, int k)
 // 確保時のゼロ初期化がそのまま残る (非 MPI 版と同じ値になる)。
 void comm_snapshot(int itime, double t)
 {
+	comm_snapshot_fields(itime, t, Ex, Ey, Ez, Hx, Hy, Hz);
+}
+
+// 場の配列を引数で受ける版。CUDA+MPI (cuda_mpi/solve.cu) は HDM (GPU かつ
+// UM でない) 実行では Ex..Hz が device メモリで host から読めないため、
+// device → host へコピーした作業バッファをここへ渡す。CPU+MPI は上の
+// comm_snapshot() 経由でグローバルの Ex..Hz をそのまま渡す。
+void comm_snapshot_fields(int itime, double t,
+	const real_t *ex, const real_t *ey, const real_t *ez,
+	const real_t *hx, const real_t *hy, const real_t *hz)
+{
 #ifdef _MPI
 	const int tag = 0;
 	MPI_Status status;
@@ -950,12 +961,12 @@ void comm_snapshot(int itime, double t)
 
 		// 自分の担当分 (成分ごとに Yee 格子で実際に更新される範囲)
 		if (active) {
-		hdf5_snapshot_put(0, 0, iMin, iMax - 1, jMin, jMax, kMin, kMax, Ex, Ni, Nj, Nk, N0);
-		hdf5_snapshot_put(0, 1, iMin, iMax, jMin, jMax - 1, kMin, kMax, Ey, Ni, Nj, Nk, N0);
-		hdf5_snapshot_put(0, 2, iMin, iMax, jMin, jMax, kMin, kMax - 1, Ez, Ni, Nj, Nk, N0);
-		hdf5_snapshot_put(1, 0, iMin, iMax, jMin - 1, jMax, kMin - 1, kMax, Hx, Ni, Nj, Nk, N0);
-		hdf5_snapshot_put(1, 1, iMin - 1, iMax, jMin, jMax, kMin - 1, kMax, Hy, Ni, Nj, Nk, N0);
-		hdf5_snapshot_put(1, 2, iMin - 1, iMax, jMin - 1, jMax, kMin, kMax, Hz, Ni, Nj, Nk, N0);
+		hdf5_snapshot_put(0, 0, iMin, iMax - 1, jMin, jMax, kMin, kMax, ex, Ni, Nj, Nk, N0);
+		hdf5_snapshot_put(0, 1, iMin, iMax, jMin, jMax - 1, kMin, kMax, ey, Ni, Nj, Nk, N0);
+		hdf5_snapshot_put(0, 2, iMin, iMax, jMin, jMax, kMin, kMax - 1, ez, Ni, Nj, Nk, N0);
+		hdf5_snapshot_put(1, 0, iMin, iMax, jMin - 1, jMax, kMin - 1, kMax, hx, Ni, Nj, Nk, N0);
+		hdf5_snapshot_put(1, 1, iMin - 1, iMax, jMin, jMax, kMin - 1, kMax, hy, Ni, Nj, Nk, N0);
+		hdf5_snapshot_put(1, 2, iMin - 1, iMax, jMin - 1, jMax, kMin, kMax, hz, Ni, Nj, Nk, N0);
 		}
 
 		// 他ランクから 1 つずつ受け取り、その都度書き込んで捨てる
@@ -1055,8 +1066,8 @@ void comm_snapshot(int itime, double t)
 		{
 			size_t m = 0;
 			const real_t *src[6];
-			src[0] = Ex; src[1] = Ey; src[2] = Ez;
-			src[3] = Hx; src[4] = Hy; src[5] = Hz;
+			src[0] = ex; src[1] = ey; src[2] = ez;
+			src[3] = hx; src[4] = hy; src[5] = hz;
 			for (int c = 0; c < 6; c++) {
 				const real_t *s = src[c];
 				for (int i = imin - 1; i <= imax; i++) {

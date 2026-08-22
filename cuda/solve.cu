@@ -13,6 +13,49 @@ solve.cu (CUDA)
 
 static void copy_to_host();
 
+// ── HDM (GPU かつ UM でない) 実行での HDF5 スナップショット ──────────────
+// Ex..Hz は cudaMalloc した device メモリなので host から直接読めない
+// (読むと 0xC0000005 で落ちる — RTX 3060 実機で確認。UM / -cpu では出ない)。
+// スナップショットを書くステップだけ host の作業バッファへコピーし、
+// そちらを出力側に渡す。UM / CPU 実行では場の配列をそのまま返す。
+static real_t *h_snap[6] = { NULL, NULL, NULL, NULL, NULL, NULL };
+static int     h_snap_failed = 0;
+
+// 戻り値: 1 = f[0..5] に host から読める Ex,Ey,Ez,Hx,Hy,Hz を入れた /
+//         0 = 作業バッファを確保できない (出力を諦める)
+static int snapshot_host_fields(const real_t *f[6])
+{
+	real_t *dev[6];
+	dev[0] = Ex; dev[1] = Ey; dev[2] = Ez;
+	dev[3] = Hx; dev[4] = Hy; dev[5] = Hz;
+	if (!GPU || UM) {
+		for (int n = 0; n < 6; n++) f[n] = dev[n];
+		return 1;
+	}
+	if (h_snap_failed) return 0;
+	const size_t size = (size_t)NN * sizeof(real_t);
+	for (int n = 0; n < 6; n++) {
+		if (h_snap[n] == NULL) h_snap[n] = (real_t *)malloc(size);
+		if (h_snap[n] == NULL) {
+			fprintf(stderr, "*** snapshot host buffer malloc error (%zu bytes) : HDF5 /timeseries is skipped\n", size);
+			fflush(stderr);
+			h_snap_failed = 1;
+			return 0;
+		}
+		cudaMemcpy(h_snap[n], dev[n], size, cudaMemcpyDeviceToHost);
+		f[n] = h_snap[n];
+	}
+	return 1;
+}
+
+static void snapshot_host_free(void)
+{
+	for (int n = 0; n < 6; n++) {
+		free(h_snap[n]);
+		h_snap[n] = NULL;
+	}
+}
+
 void solve(int io, double *tdft, FILE *fp)
 {
     // HDF5ファイルの作成
@@ -172,9 +215,15 @@ void solve(int io, double *tdft, FILE *fp)
             average(fsum);
 
             // average (plot)
+            // Niter は格納直後に加算する。以前は収束判定の後 (下の
+            // 「Niterを増加」) で加算していたため、収束して break した
+            // 最後の 1 点が収束履歴から落ちていた (CPU / MPI / CUDA+MPI は
+            // どれも格納直後に加算しており、この実装だけがずれていた。
+            // 実測: dipole の iter が CPU の 0..550 に対し CUDA は 0..500、
+            // HDF5 の metadata/Niter も 12 に対し 11)。
             Eiter[Niter] = fsum[0];
             Hiter[Niter] = fsum[1];
-            //Niter++;
+            Niter++;
 
             // monitor
             if (io) {
@@ -187,9 +236,15 @@ void solve(int io, double *tdft, FILE *fp)
                 // copy near3d from device to host
                 memcopy3_gpu();
 
-                // HDF5 : 瞬時値スナップショット (sol/outputHdf5.c)
-                if (GPU) cudaDeviceSynchronize();
-                hdf5_write_snapshot(itime, t, Ex, Ey, Ez, Hx, Hy, Hz);
+                // HDF5 : 瞬時値スナップショット (sol/outputHdf5.c)。
+                // HDM では device → host コピーを挟む (snapshot_host_fields)。
+                if (hdf5_snapshot_enabled(itime)) {
+                    if (GPU) cudaDeviceSynchronize();
+                    const real_t *f[6];
+                    if (snapshot_host_fields(f)) {
+                        hdf5_write_snapshot(itime, t, f[0], f[1], f[2], f[3], f[4], f[5]);
+                    }
+                }
             }
 
             // check convergence
@@ -200,9 +255,6 @@ void solve(int io, double *tdft, FILE *fp)
                 converged = 1;
                 break;
             }
-            
-            // Niterを増加
-            Niter++;
         }
     }
 
@@ -244,6 +296,7 @@ void solve(int io, double *tdft, FILE *fp)
     hdf5_close();
 
     // free
+    snapshot_host_free();
     memfree2_gpu();
 
     // copy near3d from device to host

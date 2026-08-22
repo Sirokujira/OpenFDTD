@@ -119,6 +119,9 @@ extern void        comm_feed(void);
 extern int         comm_inproc(int, int, int);
 extern void        comm_near3d(void);
 extern void        comm_snapshot(int, double);
+extern void        comm_snapshot_fields(int, double,
+                                        const real_t *, const real_t *, const real_t *,
+                                        const real_t *, const real_t *, const real_t *);
 extern void        comm_point(void);
 extern void        comm_X(int);
 extern void        comm_Y(int);
