@@ -38,6 +38,11 @@ if ! command -v h5ls > /dev/null 2>&1; then
 	exit 0
 fi
 
+# dipole.ofd を使う。形状 (geometry) を 1 つ持つので
+# /geometry/Gline と /geometry/MGline も作られる
+# (この 2 つは NGline == 0 のとき作られない。3D シーンで構造を
+#  重ねて描くのに使うデータなので、欠けても実行は正常終了してしまい
+#  「表示だけ出ない」形で静かに壊れる)。
 SRC=$(dirname "$0")/dipole.ofd
 if [ ! -f "$SRC" ]; then
 	echo "*** not found : $SRC" >&2
@@ -74,6 +79,7 @@ echo "--- 表示側の契約 (include/ofd_hdf5.h) ---"
 for ds in \
 	/geometry/Xn /geometry/Yn /geometry/Zn \
 	/geometry/Xc /geometry/Yc /geometry/Zc \
+	/geometry/Gline /geometry/MGline \
 	/timeseries/E /timeseries/H \
 	/timeseries/itime /timeseries/time /timeseries/time_H \
 	/freqdomain/E /freqdomain/H /freqdomain/freq \
@@ -82,6 +88,11 @@ do
 	check "$ds"
 done
 
+# 注意 : readhdf5() は /metadata/Surface も開こうとするが、書き手
+# (sol/outputHdf5.c) は Surface を書いていない (表示に不要なため PR #18 で
+# 意図的に見送った)。したがって readhdf5() は現状そのままでは完結しない。
+# ここに Surface を足すと「書いていないものを要求する」検査になるので入れない。
+# HDF5 移行を完了させるときは、Surface を書く側に足してから追加すること。
 echo "--- post/readhdf5.c が開くもの ---"
 for ds in \
 	/metadata/Title /metadata/Dt \

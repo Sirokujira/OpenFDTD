@@ -11,7 +11,15 @@ HDF5 出力 (time_series_data.h5) の共有 API。
 /geometry/
     Xn {Nx+1}, Yn {Ny+1}, Zn {Nz+1}   節点座標 [m] (f8)
     Xc {Nx},   Yc {Ny},   Zc {Nz}     セル中心座標 [m] (f8)
-    Gline {NGline,2,3}                形状ワイヤフレームの線分 [m] (f8)
+    Gline  {NGline,2,3}               形状ワイヤフレームの線分 [m] (f8)
+                                      [n][0][*] が始点、[n][1][*] が終点の (x,y,z)
+    MGline {NGline}                   線分ごとの材料 id (i4)
+                                      0=真空 1=PEC 2〜=material の定義順。
+                                      材料別の色分けに使う (PEC かどうかの判定は
+                                      == 1)。ソルバー内部の id_t はビルド構成で
+                                      幅が変わる (_ID16/_ID32/_ID64) ので、
+                                      ファイルには必ず i4 に直して書く。
+    Gline / MGline は形状が 1 つも無い (NGline == 0) 場合は作られない。
 /timeseries/                          時間領域アニメーション用 (瞬時値)
     itime  {nsnap}                    時間ステップ番号 (i4, 追記)
     time   {nsnap}                    E の時刻 [s] = (itime+1)*Dt (f8, 追記)
