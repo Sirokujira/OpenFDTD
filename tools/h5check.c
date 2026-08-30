@@ -3,10 +3,25 @@ h5check.c
 
 HDF5 ファイルに指定したデータセットが存在するかを調べる小さな道具。
 
+    ofd_h5check <ファイル> < パス一覧   (標準入力から 1 行 1 パス)
     ofd_h5check <ファイル> <パス> [<パス> ...]
 
 各パスについて "OK   <パス>" か "MISS <パス>" を出力し、
 1 つでも欠けていれば終了コード 1 を返す。
+
+## パスは標準入力から渡すこと (Windows で必須)
+
+Git Bash (MSYS) は、**先頭が '/' の引数をネイティブ Windows 実行ファイルへ
+渡すとき、勝手に Windows パスへ書き換える**。HDF5 のデータセットパスは
+"/metadata/Niter" のように '/' で始まるので、コマンドライン引数で渡すと
+
+    MISS C:/Program Files/Git/metadata/Niter
+
+のように MSYS のルートを前置された形で届き、当然すべて MISS になる。
+実際に CI の Windows ジョブでこれを踏んだ。標準入力の中身は変換されない
+ので、一覧は stdin から渡す。引数指定も残してあるが、これは Linux/macOS
+での手動確認用と考えること (MSYS_NO_PATHCONV=1 のような環境変数に
+頼る手もあるが、シェルの版によって効かないことがある)。
 
 ## なぜ h5ls ではなくこれが要るか
 
@@ -60,14 +75,27 @@ static int path_exists(hid_t file, const char *path)
 	return (n > 0);
 }
 
+/* 1 件報告して、欠けていれば 1 を返す */
+static int report(hid_t file, const char *path)
+{
+	if (path_exists(file, path)) {
+		printf("  OK   %s\n", path);
+		return 0;
+	}
+	printf("  MISS %s\n", path);
+	return 1;
+}
+
+
 int main(int argc, char **argv)
 {
 	hid_t file;
 	int i;
 	int status = 0;
 
-	if (argc < 3) {
-		fprintf(stderr, "Usage: ofd_h5check <file> <dataset-path> [<dataset-path> ...]\n");
+	if (argc < 2) {
+		fprintf(stderr, "Usage: ofd_h5check <file> < path-list\n");
+		fprintf(stderr, "       ofd_h5check <file> <dataset-path> [<dataset-path> ...]\n");
 		return 2;
 	}
 
@@ -80,13 +108,24 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	for (i = 2; i < argc; i++) {
-		if (path_exists(file, argv[i])) {
-			printf("  OK   %s\n", argv[i]);
+	if (argc >= 3) {
+		/* 引数で渡された場合 (Linux/macOS での手動確認用) */
+		for (i = 2; i < argc; i++) {
+			status |= report(file, argv[i]);
 		}
-		else {
-			printf("  MISS %s\n", argv[i]);
-			status = 1;
+	}
+	else {
+		/* 標準入力から 1 行 1 パス。Windows ではこちらを使うこと
+		   (上の「パスは標準入力から渡すこと」を参照) */
+		char line[1024];
+		while (fgets(line, (int)sizeof(line), stdin) != NULL) {
+			/* 行末の改行と CR を落とす */
+			size_t n = strlen(line);
+			while ((n > 0) && ((line[n - 1] == '\n') || (line[n - 1] == '\r'))) {
+				line[--n] = '\0';
+			}
+			if (n == 0) continue;
+			status |= report(file, line);
 		}
 	}
 

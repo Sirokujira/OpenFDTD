@@ -135,10 +135,15 @@ if [ "$MODE" = "h5ls" ]; then
 		done
 	}
 else
-	# ofd_h5check にまとめて渡す (OK/MISS を同じ書式で出す)
+	# ofd_h5check にまとめて渡す (OK/MISS を同じ書式で出す)。
+	#
+	# **パスは必ず標準入力で渡すこと。** Git Bash (MSYS) は先頭が '/' の
+	# 引数をネイティブ Windows 実行ファイルへ渡すとき勝手に Windows パスへ
+	# 書き換えるので、コマンドライン引数だと "/metadata/Niter" が
+	# "C:/Program Files/Git/metadata/Niter" になって全部 MISS になる
+	# (CI の Windows ジョブで実際に踏んだ)。標準入力は変換されない。
 	check_all() {
-		# shellcheck disable=SC2086
-		"$H5CHECK" "$H5" $2 || status=1
+		printf '%s\n' $2 | "$H5CHECK" "$H5" || status=1
 	}
 fi
 
