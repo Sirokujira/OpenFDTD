@@ -527,6 +527,21 @@ endif()
 # 対象にしているのは ofd.h のグローバル状態を必要としない翻訳単位のみ:
 #   sol/utils.c sol/vfeed.c sol/ingeometry.c sol/geomlines.c
 #   include/complex.h include/finc.h (ヘッダ内 static inline)
+# HDF5 の構成検査用の小さな道具 (data/sample/hdf5_layout_check.sh が使う)。
+#
+# 検査は本来 h5ls で足りるが、h5ls は hdf5-tools が入っている環境にしか無い。
+# CI の Windows ジョブは vcpkg の静的ビルドを使うのでツール類が PATH に来ず、
+# **Windows と macOS では HDF5 の中身がまったく検証されていなかった**。
+# この道具はソルバーと同じ HDF5 ライブラリをリンクするだけなので、
+# HDF5 でビルドできる環境なら必ず動く。
+#
+# tools/ に置いてあるのは意図的。sol/ に .c を足すと CPU ビルド
+# (file(GLOB sol/*.c)) にだけ入り、手書きリストの CUDA (SOURCES2) と
+# MPI (SOURCES3) が静かにリンクエラーになる
+# (.claude/rules/build-targets.md)。
+add_executable(ofd_h5check ${CMAKE_SOURCE_DIR}/tools/h5check.c)
+target_link_libraries(ofd_h5check PRIVATE HDF5::HDF5)
+
 option(WITH_TESTS "Build unit tests (CTest)" ON)
 if (WITH_TESTS)
     enable_testing()

@@ -55,7 +55,7 @@ GUI フロントエンド [OpenFDTD-X](https://github.com/Sirokujira/OpenFDTD-X)
 
 | グループ | 内容 | 用途 |
 |---|---|---|
-| `/geometry` | `Xn/Yn/Zn` (節点座標), `Xc/Yc/Zc`, `Gline` (形状の線分) | 格子・構造の描画 |
+| `/geometry` | `Xn/Yn/Zn` (節点座標), `Xc/Yc/Zc`, `Gline` (形状の線分), `MGline` (線分ごとの材料 id) | 格子・構造の描画 (材料別の色分け) |
 | `/timeseries` | `E`/`H` {nsnap, Nx+1, Ny+1, Nz+1, 3} の**瞬時値**, `time`/`time_H`/`itime` | 時間領域アニメーション |
 | `/freqdomain` | `E`/`H` {NFreq2, Nx+1, Ny+1, Nz+1, 3, 2} の複素振幅, `freq` | 振幅・位相の分布図 |
 | `/loss` | `P_loss` {NFreq2, Nx+1, Ny+1, Nz+1}（入射振幅 1 あたりの相対量）| 発熱・損失分布 |
@@ -87,6 +87,38 @@ hdf5 = <output> [interval]
 (dipole で `hdf5 = 1 200` にすると 12 枚 → 3 枚、5.2MB → 1.6MB)。
 `interval` は瞬時値を出せるのが `solver` の `nout` ごとなので、
 その倍数に切り上げられます。
+
+#### 構成の検査 (`hdf5_layout_check.sh`)
+
+書き手 (`sol/outputHdf5.c`) と読み手 (契約 `include/ofd_hdf5.h` /
+`post/readhdf5.c`) でパスがずれると、実行は `normal end` で終わるのに
+**表示だけ出ない**形で静かに壊れます。CI の 5 ジョブすべてで検査します。
+
+```sh
+sh data/sample/hdf5_layout_check.sh /path/to/bin/ofd /tmp/h5layout
+```
+
+検査の実体は 2 通りで、環境に応じて自動で選ばれます。
+
+| 方法 | 使う条件 |
+|---|---|
+| `h5ls` | `hdf5-tools` が入っている (Linux / macOS) |
+| `ofd_h5check` | 入っていない場合の代替 (`tools/h5check.c`) |
+
+`ofd_h5check` はソルバーと同じ HDF5 ライブラリをリンクするだけの小さな
+道具です。Windows の CI は vcpkg の静的ビルド
+(`hdf5[core,zlib]:x64-windows-static-md`) を使うのでツール類が PATH に
+来ず、**以前は Windows と macOS で HDF5 の中身がまったく検証されて
+いませんでした**。どちらも無い場合は検査を飛ばさずエラーで止めます。
+
+```sh
+cmake --build build --target ofd_h5check   # 必要ならこれでビルドする
+```
+
+`tools/` に置いてあるのは意図的です。`sol/` に .c を足すと CPU ビルド
+(`file(GLOB sol/*.c)`) にだけ入り、手書きリストの CUDA (`SOURCES2`) と
+MPI (`SOURCES3`) が静かにリンクエラーになります
+(`.claude/rules/build-targets.md`)。
 
 #### 実装ごとの対応状況
 
@@ -401,14 +433,15 @@ grep "normal end" ofd.log
   - `build-cpu` / `build-macos` / `build-windows` — Linux (gcc) / macOS
     (AppleClang) / Windows (MSVC) で CPU ビルド + dipole サンプルの
     スモーク実行 (`normal end` 判定) + TPA スラブ検証 (解析解 ±7% 判定) +
-    ベクトル化更新経路の一致検証。Linux / macOS では熱解析のセル毎材料検証、
+    ベクトル化更新経路の一致検証 + HDF5 構成の検査。
+    Linux / macOS では熱解析のセル毎材料検証、
     Linux ではさらに平面波散乱の Mie 検証 (完全導体球 RCS) を実行
   - `build-mpi` — `ofd_mpi` をビルドし、dipole の 1/2 プロセス一致、
     TPA の領域分割不変性 (5 通り)、2 プロセスでの解析解、
-    2 プロセスでのベクトル化経路の一致を判定
+    2 プロセスでのベクトル化経路の一致と HDF5 構成を判定
   - `build-cuda` — `ofd_cuda` と `ofd_cuda_mpi` を nvcc でビルドし、
-    `-cpu` 実行で解析解・領域分割不変性・ベクトル化経路の一致を判定
-    (ランナーに GPU が無いためカーネル起動構成は未検証)
+    `-cpu` 実行で解析解・領域分割不変性・ベクトル化経路の一致・
+    HDF5 構成を判定 (ランナーに GPU が無いためカーネル起動構成は未検証)
 - ビルド成果物は artifact (`ofd-linux-x64` / `ofd-macos-arm64`) に保存
 - `v*` タグを push すると GitHub Release に `ofd-<platform>.tar.gz` が
   自動添付されます (OpenFDTD-X や nightly 統合テストの取得元)
