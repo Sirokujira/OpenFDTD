@@ -556,6 +556,7 @@ if (WITH_TESTS)
         ${CMAKE_SOURCE_DIR}/tests/test_geomlines.c
         ${CMAKE_SOURCE_DIR}/tests/test_setupid.c
         ${CMAKE_SOURCE_DIR}/tests/test_farfield.c
+        ${CMAKE_SOURCE_DIR}/tests/test_outputzin.c
     )
 
     # テスト対象の実装 (グローバル状態に依存しない自己完結した翻訳単位)
@@ -567,6 +568,7 @@ if (WITH_TESTS)
         ${CMAKE_SOURCE_DIR}/sol/setupId.c
         ${CMAKE_SOURCE_DIR}/sol/farfield.c
         ${CMAKE_SOURCE_DIR}/sol/nearfield_c.c
+        ${CMAKE_SOURCE_DIR}/sol/outputZin.c
     )
 
     add_executable(ofd_tests ${TEST_SOURCES} ${TEST_TARGET_SOURCES})
@@ -576,11 +578,11 @@ if (WITH_TESTS)
     target_include_directories(ofd_tests PUBLIC
         "${PROJECT_SOURCE_DIR}/include"
         "${PROJECT_SOURCE_DIR}/tests")
-    target_link_libraries(ofd_tests PRIVATE ${MATH_LIB})
+    target_link_libraries(ofd_tests PRIVATE ${MATH_LIB} HDF5::HDF5)
 
     # テスト名は tests/test_main.c のテーブルと対応している。
     # 1 件ずつ add_test することで、どれが落ちたか CTest の出力で分かる。
-    foreach(t complex finc utils vfeed ingeometry geomlines setupid farfield)
+    foreach(t complex finc utils vfeed ingeometry geomlines setupid farfield outputzin)
         add_test(NAME ${t} COMMAND ofd_tests ${t})
     endforeach()
 endif()

@@ -39,6 +39,7 @@ ctest --test-dir build --output-on-failure   # 全件
 | `ingeometry` | `sol/ingeometry.c` | 直方体・楕円体・円柱・三角柱・角錐台・円錐台の内外判定、未知コードは常に外 |
 | `geomlines` | `sol/geomlines.c` | 形状ごとの線分数、**mode=1 が mode=0 の見積もりを超えて書き込まないこと** (バッファオーバーラン防止) |
 | `setupid` | `sol/setupId.c` | 形状→Yee 格子の焼き付け。6 成分が正しい実位置 (節点/セル中心) を参照すること (**半セルずれの検出**)、shape=1 の getspan 高速経路と汎用経路の一致、ドメイン端に接する物体の焼き付け漏れ、PEC/分散性材料の表面補正 (`setupId_surface`) |
+| `outputzin` | `sol/outputZin.c` | 入力インピーダンス `Zin = DFT(V)/DFT(I)` と 電流 DFT の半ステップシフト、反射 `Ref = 20log10\|Γ\|`、入力電力 `Pin = Re(V conj(I))` と不整合損の補正 `/(1-\|Γ\|²)`、派生量 `zinDerived` (アドミタンス [mS]・VSWR)。**ログと HDF5 が同じ値を出すこと** |
 | `farfield` | `sol/farfield.c`, `sol/nearfield_c.c` | 微小ダイポールの放射パターン (電気/磁気/Huygens)、等価電磁流 `n̂×H` / `-n̂×E` の 6 成分すべて、位相因子 `exp(+jk r̂·r')` の符号、偏波分解 (直線/円/楕円と `\|E\|²=長軸²+短軸²=RHCP²+LHCP²`)、節点補間が一次関数を厳密に再現すること、面の幾何 (法線・位置・面素・PBC)、正規化係数 `farfactor` |
 
 ## テストを足すとき
