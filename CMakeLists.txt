@@ -527,6 +527,21 @@ endif()
 # 対象にしているのは ofd.h のグローバル状態を必要としない翻訳単位のみ:
 #   sol/utils.c sol/vfeed.c sol/ingeometry.c sol/geomlines.c
 #   include/complex.h include/finc.h (ヘッダ内 static inline)
+# HDF5 の構成検査用の小さな道具 (data/sample/hdf5_layout_check.sh が使う)。
+#
+# 検査は本来 h5ls で足りるが、h5ls は hdf5-tools が入っている環境にしか無い。
+# CI の Windows ジョブは vcpkg の静的ビルドを使うのでツール類が PATH に来ず、
+# **Windows と macOS では HDF5 の中身がまったく検証されていなかった**。
+# この道具はソルバーと同じ HDF5 ライブラリをリンクするだけなので、
+# HDF5 でビルドできる環境なら必ず動く。
+#
+# tools/ に置いてあるのは意図的。sol/ に .c を足すと CPU ビルド
+# (file(GLOB sol/*.c)) にだけ入り、手書きリストの CUDA (SOURCES2) と
+# MPI (SOURCES3) が静かにリンクエラーになる
+# (.claude/rules/build-targets.md)。
+add_executable(ofd_h5check ${CMAKE_SOURCE_DIR}/tools/h5check.c)
+target_link_libraries(ofd_h5check PRIVATE HDF5::HDF5)
+
 option(WITH_TESTS "Build unit tests (CTest)" ON)
 if (WITH_TESTS)
     enable_testing()
@@ -540,6 +555,9 @@ if (WITH_TESTS)
         ${CMAKE_SOURCE_DIR}/tests/test_ingeometry.c
         ${CMAKE_SOURCE_DIR}/tests/test_geomlines.c
         ${CMAKE_SOURCE_DIR}/tests/test_setupid.c
+        ${CMAKE_SOURCE_DIR}/tests/test_farfield.c
+        ${CMAKE_SOURCE_DIR}/tests/test_outputzin.c
+        ${CMAKE_SOURCE_DIR}/tests/test_outputspara.c
     )
 
     # テスト対象の実装 (グローバル状態に依存しない自己完結した翻訳単位)
@@ -549,6 +567,10 @@ if (WITH_TESTS)
         ${CMAKE_SOURCE_DIR}/sol/ingeometry.c
         ${CMAKE_SOURCE_DIR}/sol/geomlines.c
         ${CMAKE_SOURCE_DIR}/sol/setupId.c
+        ${CMAKE_SOURCE_DIR}/sol/farfield.c
+        ${CMAKE_SOURCE_DIR}/sol/nearfield_c.c
+        ${CMAKE_SOURCE_DIR}/sol/outputZin.c
+        ${CMAKE_SOURCE_DIR}/sol/outputSpara.c
     )
 
     add_executable(ofd_tests ${TEST_SOURCES} ${TEST_TARGET_SOURCES})
@@ -558,11 +580,11 @@ if (WITH_TESTS)
     target_include_directories(ofd_tests PUBLIC
         "${PROJECT_SOURCE_DIR}/include"
         "${PROJECT_SOURCE_DIR}/tests")
-    target_link_libraries(ofd_tests PRIVATE ${MATH_LIB})
+    target_link_libraries(ofd_tests PRIVATE ${MATH_LIB} HDF5::HDF5)
 
     # テスト名は tests/test_main.c のテーブルと対応している。
     # 1 件ずつ add_test することで、どれが落ちたか CTest の出力で分かる。
-    foreach(t complex finc utils vfeed ingeometry geomlines setupid)
+    foreach(t complex finc utils vfeed ingeometry geomlines setupid farfield outputzin outputspara)
         add_test(NAME ${t} COMMAND ofd_tests ${t})
     endforeach()
 endif()

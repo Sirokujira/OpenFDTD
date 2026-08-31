@@ -165,6 +165,27 @@ void readhdf5() {
             status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, Gline);
             H5Dclose(dataset_id);
         }
+
+        // MGline (線分ごとの材料 id) はファイル上は i4。
+        // ソルバー内部の id_t はビルド構成で幅が変わるので、
+        // i4 で受けてから id_t へ詰め替える (直接 H5Dread しない)。
+        MGline = (id_t *)malloc(sizeof(id_t) * NGline);
+        dataset_id = H5Dopen(geometry_group_id, "MGline", H5P_DEFAULT);
+        if ((dataset_id >= 0) && (MGline != NULL)) {
+            int32_t *buf = (int32_t *)malloc(sizeof(int32_t) * NGline);
+            if (buf != NULL) {
+                status = H5Dread(dataset_id, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, buf);
+                for (int64_t n = 0; n < NGline; n++) {
+                    MGline[n] = (id_t)buf[n];
+                }
+                free(buf);
+            }
+            H5Dclose(dataset_id);
+        }
+        else if (MGline != NULL) {
+            // 古いファイルには MGline が無い。全部真空扱いにして落ちないようにする
+            memset(MGline, 0, sizeof(id_t) * NGline);
+        }
     }
 
     if (geometry_group_id >= 0) H5Gclose(geometry_group_id);
@@ -177,7 +198,11 @@ void readhdf5() {
     Pin[0] =         (double *)malloc(sizeof(double)      * NFeed * NFreq2);
     Pin[1] =         (double *)malloc(sizeof(double)      * NFeed * NFreq2);
     Spara  =    (d_complex_t *)malloc(sizeof(d_complex_t) * NPoint * NFreq1);
-    Gline  = (double (*)[2][3])malloc(sizeof(double)      * NGline * 2 * 3);
+    // Gline / MGline はここで確保しない。
+    // 上の /geometry の読み込みで確保済みで、ここで malloc し直すと
+    // **読んだ線分データを捨てて未初期化のバッファに差し替えてしまう**
+    // (かつ元の領域が漏れる)。形状が無い (NGline == 0) 場合は
+    // どちらも NULL のままで、描画側は NGline で判定する。
 
 	//plot1d?(Far?)
 	size_t size;
