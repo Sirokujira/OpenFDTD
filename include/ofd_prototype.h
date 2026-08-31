@@ -20,6 +20,7 @@ extern void        calcPin(void);
 extern void        calcSpara(void);
 extern void        calcZin(void);
 extern void        zinDerived(d_complex_t, double, double *, double *, double *);
+extern void        sparaDerived(d_complex_t, double *, double *);
 extern d_complex_t coupling(int, int, int);
 extern double      cputime(void);
 extern double      factorMur(double, id_t);
