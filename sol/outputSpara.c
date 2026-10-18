@@ -63,25 +63,6 @@ void calcSpara(void)
 	free(cv);
 }
 
-// S パラメータから表示用の量 (振幅[dB] と位相[deg]) を求める
-//
-// ログ (_outputSpara) と HDF5 (write_spara_data_to_hdf5) の両方が同じ量を
-// 出すので、ここに 1 本化する。以前は同じ式が 2 箇所に書いてあり、片方だけ
-// 直すと **GUI が読む HDF5 とログが食い違う**状態になっていた
-// (sol/outputZin.c にも同じ重複があり、そちらも 1 本化済み)。
-//
-// |S| が 0 のとき log10 が -inf になるので EPS2 (= 1e-12) で下限を切る。
-// 20*log10(1e-12) = -240 dB がその底値。
-//
-// Touchstone 出力 (outputTouchstone) は MA 形式なので dB ではなく
-// 線形の振幅を書く。そちらはこの関数を使わない (仕様どおり)。
-void sparaDerived(d_complex_t s, double *mag_dB, double *phase_deg)
-{
-	if (mag_dB    != NULL) *mag_dB    = 20 * log10(MAX(d_abs(s), EPS2));
-	if (phase_deg != NULL) *phase_deg = d_deg(s);
-}
-
-
 static void _outputSpara(FILE *fp)
 {
 	fprintf(fp, "=== S-parameters ===\n");
@@ -97,7 +78,7 @@ static void _outputSpara(FILE *fp)
 		for (int ipoint = 0; ipoint < NPoint; ipoint++) {
 			const int id = (ipoint * NFreq1) + ifreq;
 			double mag, deg;
-			sparaDerived(Spara[id], &mag, &deg);
+			dbDeg(Spara[id], &mag, &deg);  /* sol/utils.c */
 			fprintf(fp, "%9.3f%9.3f", mag, deg);
 		}
 		fprintf(fp, "\n");
@@ -123,7 +104,7 @@ static void write_spara_data_to_hdf5()
         for (int ipoint = 0; ipoint < NPoint; ipoint++) {
             const int id = (ipoint * NFreq1) + ifreq;
             const size_t did = (size_t)ifreq * NPoint + ipoint;
-            sparaDerived(Spara[id], &data[did].magnitude_dB, &data[did].phase_deg);
+            dbDeg(Spara[id], &data[did].magnitude_dB, &data[did].phase_deg);  /* sol/utils.c */
         }
     }
 

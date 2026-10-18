@@ -44,8 +44,7 @@ void write_coupling_data_to_hdf5()
             for (int ipoint = 0; ipoint < NPoint; ipoint++) {
                 const d_complex_t couple = coupling(ifeed, ipoint, ifreq);
                 const size_t id = ((size_t)ifreq * NFeed + ifeed) * (size_t)NPoint + ipoint;
-                data[id].magnitude_dB = 20 * log10(fmax(d_abs(couple), EPS2));
-                data[id].phase_deg = d_deg(couple);
+                dbDeg(couple, &data[id].magnitude_dB, &data[id].phase_deg);  /* sol/utils.c */
             }
         }
     }
@@ -122,8 +121,9 @@ static void _outputCoupling(FILE *fp)
 		for (int ifeed = 0; ifeed < NFeed; ifeed++) {
 			for (int ipoint = 0; ipoint < NPoint; ipoint++) {
 				const d_complex_t couple = coupling(ifeed, ipoint, ifreq);
-				fprintf(fp, "%9.3f", 20 * log10(MAX(d_abs(couple), EPS2)));
-				fprintf(fp, "%9.3f", d_deg(couple));
+				double mag, deg;
+				dbDeg(couple, &mag, &deg);  /* sol/utils.c (HDF5 と同じ式) */
+				fprintf(fp, "%9.3f%9.3f", mag, deg);
 			}
 		}
 		fprintf(fp, "\n");

@@ -39,10 +39,12 @@ Touchstone ファイル (.snp)** のもとになる。フィルタや線路の�
 整数周期ぶんの和なので、振幅 A・位相 φ の正弦波の DFT は
 (Ntime/2) A e^{jφ} になる。S は比なので (Ntime/2) は打ち消える。
 
-## sparaDerived()
+## dbDeg() (sol/utils.c)
 
 振幅[dB] と位相[deg] はログと HDF5 の両方に出る。以前は同じ式が
-2 箇所に重複していたので 1 本化した (sol/outputZin.c と同じ問題)。
+S パラメータと結合度で計 4 箇所に重複していたので 1 本化した
+(sol/outputZin.c と同じ問題)。結合度 (sol/outputCoupling.c) も同じ
+関数を使うので、ここでの検証がそのまま両方に効く。
 Touchstone は MA 形式なので dB ではなく線形振幅を書く (仕様どおり)。
 */
 
@@ -54,7 +56,7 @@ Touchstone は MA 形式なので dB ではなく線形振幅を書く (仕様�
 #include <string.h>
 
 void calcSpara(void);
-void sparaDerived(d_complex_t s, double *mag_dB, double *phase_deg);
+void dbDeg(d_complex_t z, double *mag_dB, double *phase_deg);
 
 #define NT   (2000)
 #define FREQ (1.0e9)
@@ -200,31 +202,31 @@ static void test_special_cases(void)
 	}
 }
 
-/* 4. sparaDerived : 振幅[dB] と位相[deg] */
+/* 4. dbDeg : 振幅[dB] と位相[deg] */
 static void test_derived(void)
 {
 	double mag, deg;
 
 	/* (a) |S| = 1 は 0 dB */
-	sparaDerived(d_complex(1.0, 0.0), &mag, &deg);
+	dbDeg(d_complex(1.0, 0.0), &mag, &deg);
 	CHECK_NEAR(mag, 0.0, 1e-12);
 	CHECK_NEAR(deg, 0.0, 1e-12);
 
 	/* (b) |S| = 0.5 は 20log10(0.5) = -6.0206 dB */
-	sparaDerived(d_complex(0.5, 0.0), &mag, &deg);
+	dbDeg(d_complex(0.5, 0.0), &mag, &deg);
 	CHECK_NEAR(mag, 20 * log10(0.5), 1e-12);
 
 	/* (c) 位相は度で、象限が正しいこと */
-	sparaDerived(d_complex(0.0, 1.0), &mag, &deg);
+	dbDeg(d_complex(0.0, 1.0), &mag, &deg);
 	CHECK_NEAR(deg, 90.0, 1e-9);
-	sparaDerived(d_complex(-1.0, 0.0), &mag, &deg);
+	dbDeg(d_complex(-1.0, 0.0), &mag, &deg);
 	CHECK_NEAR(fabs(deg), 180.0, 1e-9);
-	sparaDerived(d_complex(1.0, -1.0), &mag, &deg);
+	dbDeg(d_complex(1.0, -1.0), &mag, &deg);
 	CHECK_NEAR(deg, -45.0, 1e-9);
 	CHECK_NEAR(mag, 20 * log10(sqrt(2.0)), 1e-9);
 
 	/* (d) S = 0 は log10 が発散するので EPS2 で下限を切る (-240 dB) */
-	sparaDerived(d_complex(0.0, 0.0), &mag, &deg);
+	dbDeg(d_complex(0.0, 0.0), &mag, &deg);
 	CHECK_NEAR(mag, 20 * log10(EPS2), 1e-9);
 	CHECK_NEAR(mag, -240.0, 1e-9);
 	CHECK(mag > -1e300);          /* -inf になっていないこと */
@@ -233,7 +235,7 @@ static void test_derived(void)
 	{
 		double prev = -1e300;
 		for (int i = 1; i <= 10; i++) {
-			sparaDerived(d_complex(i * 0.1, 0.0), &mag, &deg);
+			dbDeg(d_complex(i * 0.1, 0.0), &mag, &deg);
 			CHECK(mag > prev);
 			prev = mag;
 		}
@@ -242,8 +244,8 @@ static void test_derived(void)
 	/* (f) 20log10|S| の定義どおりであること (振幅を 10 倍で +20 dB) */
 	{
 		double m1, m2;
-		sparaDerived(d_complex(0.03, 0.04), &m1, &deg);   /* |S| = 0.05 */
-		sparaDerived(d_complex(0.30, 0.40), &m2, &deg);   /* |S| = 0.50 */
+		dbDeg(d_complex(0.03, 0.04), &m1, &deg);   /* |S| = 0.05 */
+		dbDeg(d_complex(0.30, 0.40), &m2, &deg);   /* |S| = 0.50 */
 		CHECK_NEAR(m2 - m1, 20.0, 1e-9);
 		CHECK_NEAR(m1, 20 * log10(0.05), 1e-9);
 	}
@@ -256,7 +258,7 @@ static void test_log_and_hdf5_agree(void)
 	const d_complex_t s = d_complex(0.1234, -0.5678);
 	double mag, deg;
 
-	sparaDerived(s, &mag, &deg);
+	dbDeg(s, &mag, &deg);
 	/* 独立に計算した期待値と一致すること */
 	CHECK_NEAR(mag, 20 * log10(d_abs(s)), 1e-12);
 	CHECK_NEAR(deg, atan2(s.i, s.r) * 180 / PI, 1e-9);
@@ -264,9 +266,9 @@ static void test_log_and_hdf5_agree(void)
 	/* 片方だけ取り出せること (NULL を渡せる) */
 	{
 		double only;
-		sparaDerived(s, &only, NULL);
+		dbDeg(s, &only, NULL);
 		CHECK_NEAR(only, mag, 1e-12);
-		sparaDerived(s, NULL, &only);
+		dbDeg(s, NULL, &only);
 		CHECK_NEAR(only, deg, 1e-12);
 	}
 }

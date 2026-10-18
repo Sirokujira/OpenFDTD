@@ -42,6 +42,8 @@ void test_setupid(void);
 void test_farfield(void);
 void test_outputzin(void);
 void test_outputspara(void);
+void test_outputcoupling(void);
+void test_outputcross(void);
 
 typedef struct {
 	const char *name;
@@ -59,6 +61,8 @@ static const testcase_t tests[] = {
 	{"farfield",   test_farfield},
 	{"outputzin",  test_outputzin},
 	{"outputspara",test_outputspara},
+	{"outputcoupling", test_outputcoupling},
+	{"outputcross", test_outputcross},
 };
 
 static const int ntest = (int)(sizeof(tests) / sizeof(tests[0]));
