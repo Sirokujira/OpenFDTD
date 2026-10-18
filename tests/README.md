@@ -43,6 +43,7 @@ ctest --test-dir build --output-on-failure   # 全件
 | `outputspara` | `sol/outputSpara.c` | S パラメータ。伝送線路の 3 点観測から進行波 V+ と 反射波 V- を分離する計算 (`S11 = V-/V+`, `Sn1 = Vn/V+`) を、無損失・有損失の両方で **合成した時系列から元の S を復元できるか**で検証。無反射で `S11=0`、全反射で `|S11|=1`、振幅倍率に対する不変性。dB・位相への変換 `dbDeg` (`sol/utils.c`。`EPS2` による下限 −240 dB。結合度と共通)。**ログと HDF5 が同じ値を出すこと** |
 | `outputcoupling` | `sol/outputCoupling.c` | 結合度 `C = DFT(Vpoint)/DFT(Vfeed)`。2 周波数を重ねた信号と給電・観測点 2 本ずつで、**周波数・給電・観測点の添字の取り違え**まで検出 |
 | `outputcross` | `sol/outputCross.c` | 散乱断面積。前方にだけ放射する Huygens 源で **後方 0・前方 4π [m²]** (物理)、前方の方向を単位ベクトル `−r̂` から独立に求めて対蹠点 `(180−θ, 180+φ)` を検証、平面波の正規化 `ffctr² = π` (λ=1 m) |
+| `dispersion` | `sol/setupDispersion.c`, `sol/dispersionE[xyz].c` | 分散性材料 (`material = 2 einf ae be ce`、`ε(ω) = ε∞ + ae/(jω) + be/(ce+jω)`) の再帰的畳み込み。係数 `xi0`/`dxi0`/`ke` を `χ(t)` の数値積分と比較、**`ce = 0` (導電率のみ) で 0/0 にならないこと**、curl H = 0 の一様媒質での緩和を解析解 (Debye: 時定数 `ε∞/(ce εs)` で `E0 ε∞/εs` へ、導電率: `exp(−ae t/ε∞)`) と比較、格子点リストの範囲 (自成分方向だけ `< Max`) と材料ごとの係数、平面波入射で畳み込みに入射界 (各成分の Yee 位置・偏波成分) を足すこと |
 | `farfield` | `sol/farfield.c`, `sol/nearfield_c.c` | 微小ダイポールの放射パターン (電気/磁気/Huygens)、等価電磁流 `n̂×H` / `-n̂×E` の 6 成分すべて、位相因子 `exp(+jk r̂·r')` の符号、偏波分解 (直線/円/楕円と `\|E\|²=長軸²+短軸²=RHCP²+LHCP²`)、節点補間が一次関数を厳密に再現すること、面の幾何 (法線・位置・面素・PBC)、正規化係数 `farfactor` |
 
 ## テストを足すとき

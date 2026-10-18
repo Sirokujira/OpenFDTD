@@ -87,6 +87,7 @@ extern void        setup(void);
 extern void        setupABCsize(void);
 extern void        setupDft(void);
 extern void        setupDispersion(void);
+extern void        dispersionFactor(double, double, double, double, double *, double *, double *);
 extern void        setupId(void);
 extern void        setupMurHx(int);
 extern void        setupMurHy(int);
