@@ -45,6 +45,7 @@ void test_outputspara(void);
 void test_outputcoupling(void);
 void test_outputcross(void);
 void test_dispersion(void);
+void test_pml(void);
 
 typedef struct {
 	const char *name;
@@ -65,6 +66,7 @@ static const testcase_t tests[] = {
 	{"outputcoupling", test_outputcoupling},
 	{"outputcross", test_outputcross},
 	{"dispersion", test_dispersion},
+	{"pml",        test_pml},
 };
 
 static const int ntest = (int)(sizeof(tests) / sizeof(tests[0]));

@@ -44,6 +44,7 @@ ctest --test-dir build --output-on-failure   # 全件
 | `outputcoupling` | `sol/outputCoupling.c` | 結合度 `C = DFT(Vpoint)/DFT(Vfeed)`。2 周波数を重ねた信号と給電・観測点 2 本ずつで、**周波数・給電・観測点の添字の取り違え**まで検出 |
 | `outputcross` | `sol/outputCross.c` | 散乱断面積。前方にだけ放射する Huygens 源で **後方 0・前方 4π [m²]** (物理)、前方の方向を単位ベクトル `−r̂` から独立に求めて対蹠点 `(180−θ, 180+φ)` を検証、平面波の正規化 `ffctr² = π` (λ=1 m) |
 | `dispersion` | `sol/setupDispersion.c`, `sol/dispersionE[xyz].c` | 分散性材料 (`material = 2 einf ae be ce`、`ε(ω) = ε∞ + ae/(jω) + be/(ce+jω)`) の再帰的畳み込み。係数 `xi0`/`dxi0`/`ke` を `χ(t)` の数値積分と比較、**`ce = 0` (導電率のみ) で 0/0 にならないこと**、curl H = 0 の一様媒質での緩和を解析解 (Debye: 時定数 `ε∞/(ce εs)` で `E0 ε∞/εs` へ、導電率: `exp(−ae t/ε∞)`) と比較、格子点リストの範囲 (自成分方向だけ `< Max`) と材料ごとの係数、平面波入射で畳み込みに入射界 (各成分の Yee 位置・偏波成分) を足すこと |
+| `pml` | `sol/setupPml.c`, `sol/setupPml[EH]?.c`, `sol/pml[EH]?.c` | PML 吸収境界。損失分布から σmax を取り出し、**理論反射率 `R(0) = exp(−2∫σ dx)` が入力の R0 に戻ること**、E 節点と H セル中心を深さ順に並べて狭義単調増加 (半セルずれの検出)・両側で一致・PML 内のセル幅は境界セル幅の延長、材料係数 `1/εr`・`1/μr`・`1/√(εμ)`、格子点リストの個数 (外周 PEC 壁の接線 E は除く)・重複なし・境界材料は最も近い内部の点、6 成分の分割界の更新を Maxwell の回転 (符号・後退/前進差分・双対/主セル幅) と整合損失 `g/√(εμ)` から計算した値と比較。不等間隔・`Nx≠Ny≠Nz`・非真空の材料で行う。物理での確認は `data/sample/pml_reflection_check.sh` |
 | `farfield` | `sol/farfield.c`, `sol/nearfield_c.c` | 微小ダイポールの放射パターン (電気/磁気/Huygens)、等価電磁流 `n̂×H` / `-n̂×E` の 6 成分すべて、位相因子 `exp(+jk r̂·r')` の符号、偏波分解 (直線/円/楕円と `\|E\|²=長軸²+短軸²=RHCP²+LHCP²`)、節点補間が一次関数を厳密に再現すること、面の幾何 (法線・位置・面素・PBC)、正規化係数 `farfactor` |
 
 ## テストを足すとき

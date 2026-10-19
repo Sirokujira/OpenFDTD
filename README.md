@@ -304,6 +304,39 @@ OFD_ARGS="-cpu" sh data/sample/vector_check.sh /path/to/bin/ofd_cuda /tmp/vector
 意図的な取り違えを入れて、**24 通りすべてがこの検証で NG になる**ことを
 確認しています (追加サンプルを外すと 24 通りとも素通りします)。
 
+### PML 吸収境界の検証
+
+`abc = 1 L M R0` の PML が実際に反射を抑えていることを、時間ゲート付きの
+参照解比較で確かめます (`data/sample/pml_reflection.ofd` +
+`data/sample/pml_reflection_check.sh`)。
+
+```sh
+sh data/sample/pml_reflection_check.sh /path/to/bin/ofd /tmp/pml
+
+# MPI / CUDA にも同じスクリプトを掛けられる
+OFD_LAUNCHER="mpirun -n 2" OFD_ARGS="-p 1 1 2" \
+  sh data/sample/pml_reflection_check.sh /path/to/bin/ofd_mpi /tmp/pml-mpi
+OFD_ARGS="-cpu" sh data/sample/pml_reflection_check.sh /path/to/bin/ofd_cuda /tmp/pml-cuda
+```
+
+一辺 24 セル + PML 8 層の領域と、同じセル幅で一辺 104 セルに広げた参照
+(Mur) を走らせ、参照の境界反射が観測点へ戻る前 (150 ステップ) までの
+観測点の時系列 (HDF5 の `/metadata/VPoint`) の差を比べます。判定は各点で
+`max|V_pml - V_ref| / max|V_ref| <= 0.025`。実測は PML 0.012〜0.017、
+同じ大きさの Mur-1st は 0.030〜0.073 です。時系列はソルバーと一緒に
+ビルドされる `ofd_h5check -d` で読むので、h5dump の無い Windows / macOS
+でも動きます。
+
+この判定が捕まえるのは符号の誤り (発散) や損失の勾配の欠落のような
+大きな壊れ方です。正常な PML でも角の領域と近傍界で 1% 程度の差が残る
+ため、損失分布の添字 ±1 や σmax の定数倍といった細かい誤りは埋もれます。
+そちらはユニットテスト `tests/test_pml.c` が式の単位で検出します
+(理論反射率 `R(0) = exp(-2∫σ dx)` が R0 に戻ること、6 成分の分割界の
+更新式、境界材料の引き継ぎ)。
+
+なお PBC を指定すると PML は Mur-1st に置き換えられます
+(`sol/input_data.c`)。
+
 ### 二光子吸収 (TPA) 非線形材料
 
 メタマテリアル装荷 Si 導波路の光活性化関数

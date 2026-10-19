@@ -26,6 +26,7 @@ $OLDPWD/bin/ofd -n 2 dipole.ofd && grep "normal end" ofd.log
 sh data/sample/tpa_slab_check.sh         bin/ofd /tmp/tpa-check      # TPA ±7%
 sh data/sample/thermal_material_check.sh bin/ofd /tmp/thermal-check  # 熱解析の材料参照
 sh data/sample/sphere_rcs_check.sh       bin/ofd /tmp/rcs-check      # 平面波 RCS vs Mie
+sh data/sample/pml_reflection_check.sh   bin/ofd /tmp/pml-check      # PML 反射 vs 大領域の参照
 ```
 
 `/check` (ビルド+回帰+TPA)、`/preflight` (push 前の一括点検)、
