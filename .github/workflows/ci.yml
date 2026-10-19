@@ -60,7 +60,7 @@ jobs:
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-tpa
 
       # PML (abc = 1) : 小さい領域 + PML を大きい参照領域と時間ゲート付きで比べ、
-      # 境界の反射が各観測点のピークの 2.5% 以下であること (Mur は 3〜7%)。
+      # 境界の反射が各観測点のピークの 2.5% 以下であること (Mur は 3〜8%)。
       # 係数の細かい誤りは tests/test_pml.c が受け持つ
       - name: Validation test — PML reflection
         run: sh data/sample/pml_reflection_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-pml
@@ -169,7 +169,7 @@ jobs:
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-tpa
 
       # PML (abc = 1) : 小さい領域 + PML を大きい参照領域と時間ゲート付きで比べ、
-      # 境界の反射が各観測点のピークの 2.5% 以下であること (Mur は 3〜7%)。
+      # 境界の反射が各観測点のピークの 2.5% 以下であること (Mur は 3〜8%)。
       # 係数の細かい誤りは tests/test_pml.c が受け持つ
       - name: Validation test — PML reflection
         run: sh data/sample/pml_reflection_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-pml

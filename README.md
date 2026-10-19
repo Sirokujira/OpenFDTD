@@ -322,8 +322,8 @@ OFD_ARGS="-cpu" sh data/sample/pml_reflection_check.sh /path/to/bin/ofd_cuda /tm
 一辺 24 セル + PML 8 層の領域と、同じセル幅で一辺 104 セルに広げた参照
 (Mur) を走らせ、参照の境界反射が観測点へ戻る前 (150 ステップ) までの
 観測点の時系列 (HDF5 の `/metadata/VPoint`) の差を比べます。判定は各点で
-`max|V_pml - V_ref| / max|V_ref| <= 0.025`。実測は PML 0.012〜0.017、
-同じ大きさの Mur-1st は 0.030〜0.073 です。時系列はソルバーと一緒に
+`max|V_pml - V_ref| / max|V_ref| <= 0.025`。実測は PML 0.010〜0.017、
+同じ大きさの Mur-1st は 0.032〜0.080 です。時系列はソルバーと一緒に
 ビルドされる `ofd_h5check -d` で読むので、h5dump の無い Windows / macOS
 でも動きます。
 
