@@ -562,6 +562,8 @@ if (WITH_TESTS)
         ${CMAKE_SOURCE_DIR}/tests/test_outputcross.c
         ${CMAKE_SOURCE_DIR}/tests/test_dispersion.c
         ${CMAKE_SOURCE_DIR}/tests/test_pml.c
+        ${CMAKE_SOURCE_DIR}/tests/test_mur.c
+        ${CMAKE_SOURCE_DIR}/tests/test_pbc.c
     )
 
     # テスト対象の実装 (グローバル状態に依存しない自己完結した翻訳単位)
@@ -594,6 +596,13 @@ if (WITH_TESTS)
         ${CMAKE_SOURCE_DIR}/sol/pmlHx.c
         ${CMAKE_SOURCE_DIR}/sol/pmlHy.c
         ${CMAKE_SOURCE_DIR}/sol/pmlHz.c
+        ${CMAKE_SOURCE_DIR}/sol/murH.c
+        ${CMAKE_SOURCE_DIR}/sol/setupMurHx.c
+        ${CMAKE_SOURCE_DIR}/sol/setupMurHy.c
+        ${CMAKE_SOURCE_DIR}/sol/setupMurHz.c
+        ${CMAKE_SOURCE_DIR}/sol/pbcx.c
+        ${CMAKE_SOURCE_DIR}/sol/pbcy.c
+        ${CMAKE_SOURCE_DIR}/sol/pbcz.c
     )
 
     add_executable(ofd_tests ${TEST_SOURCES} ${TEST_TARGET_SOURCES})
@@ -607,7 +616,7 @@ if (WITH_TESTS)
 
     # テスト名は tests/test_main.c のテーブルと対応している。
     # 1 件ずつ add_test することで、どれが落ちたか CTest の出力で分かる。
-    foreach(t complex finc utils vfeed ingeometry geomlines setupid farfield outputzin outputspara outputcoupling outputcross dispersion pml)
+    foreach(t complex finc utils vfeed ingeometry geomlines setupid farfield outputzin outputspara outputcoupling outputcross dispersion pml mur pbc)
         add_test(NAME ${t} COMMAND ofd_tests ${t})
     endforeach()
 endif()

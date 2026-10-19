@@ -159,18 +159,6 @@ static void setup_mesh(void)
 
 
 // Mur factor
-double factorMur(double d, id_t m)
-{
-	if (m != PEC) {
-		const double vdt = (C * Dt) / sqrt(Material[m].epsr * Material[m].amur);
-		return (vdt - d) / (vdt + d);
-	}
-	else {
-		return -1;
-	}
-}
-
-
 // setup
 void setup(void)
 {
