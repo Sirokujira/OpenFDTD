@@ -95,6 +95,34 @@ void write_cross_section_data_to_hdf5(const double bcs[], const double fcs[])
     free(data);
 }
 
+// 散乱断面積 (後方 BCS / 前方 FCS) [m^2]
+//
+// 平面波の入射方向パラメータ (Planewave.theta, phi) は**波が来る方向**を
+// 表す (sol/input2.c で伝搬ベクトルを ri = -r1 としている)。したがって
+//   後方散乱 = 波源へ戻る方向     = (θ, φ)
+//   前方散乱 = 波の進む方向 = 対蹠点 = (180 - θ, 180 + φ)
+// 対蹠点は単位ベクトルが -r̂ になる点で、球面座標では θ -> 180-θ,
+// φ -> φ+180 になる (tests/test_outputcross.c がこれを独立に確かめる)。
+//
+// 振幅 |E|^2 = |Eθ|^2 + |Eφ|^2 は farfactor() の正規化込みで、
+// 平面波入射なら断面積 [m^2] そのものになる。
+//
+// 出力 (ログ・HDF5) から切り離してあるのはテストのため。
+void calcCross(int ifreq, double *bcs, double *fcs)
+{
+    const double ffctr = farfactor(ifreq);
+    d_complex_t etheta, ephi;
+
+    // BCS : 波源へ戻る方向
+    farfield(ifreq,       Planewave.theta,       Planewave.phi, ffctr, &etheta, &ephi);
+    *bcs = d_norm(etheta) + d_norm(ephi);
+
+    // FCS : 対蹠点 (波の進む方向)
+    farfield(ifreq, 180 - Planewave.theta, 180 + Planewave.phi, ffctr, &etheta, &ephi);
+    *fcs = d_norm(etheta) + d_norm(ephi);
+}
+
+
 void outputCross(FILE *fp)
 {
     // alloc
@@ -103,14 +131,7 @@ void outputCross(FILE *fp)
 
     // calculation
     for (int ifreq = 0; ifreq < NFreq2; ifreq++) {
-        const double ffctr = farfactor(ifreq);
-        d_complex_t etheta, ephi;
-        // BCS
-        farfield(ifreq,       Planewave.theta,       Planewave.phi, ffctr, &etheta, &ephi);
-        bcs[ifreq] = d_norm(etheta) + d_norm(ephi);
-        // FCS
-        farfield(ifreq, 180 - Planewave.theta, 180 + Planewave.phi, ffctr, &etheta, &ephi);
-        fcs[ifreq] = d_norm(etheta) + d_norm(ephi);
+        calcCross(ifreq, &bcs[ifreq], &fcs[ifreq]);
     }
 
     // output

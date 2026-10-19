@@ -59,6 +59,12 @@ jobs:
       - name: Validation test — TPA slab
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-tpa
 
+      # PML (abc = 1) : 小さい領域 + PML を大きい参照領域と時間ゲート付きで比べ、
+      # 境界の反射が各観測点のピークの 2.5% 以下であること (Mur は 3〜8%)。
+      # 係数の細かい誤りは tests/test_pml.c が受け持つ
+      - name: Validation test — PML reflection
+        run: sh data/sample/pml_reflection_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-pml
+
       # 熱解析レイヤ : 発熱密度がセル毎の材料を参照していることの検証
       # (熱解析レイヤは CPU 版のみなので build-mpi / build-cuda では実行しない)
       - name: Validation test — thermal per-cell material
@@ -162,10 +168,20 @@ jobs:
       - name: Validation test — TPA slab
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-tpa
 
+      # PML (abc = 1) : 小さい領域 + PML を大きい参照領域と時間ゲート付きで比べ、
+      # 境界の反射が各観測点のピークの 2.5% 以下であること (Mur は 3〜8%)。
+      # 係数の細かい誤りは tests/test_pml.c が受け持つ
+      - name: Validation test — PML reflection
+        run: sh data/sample/pml_reflection_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-pml
+
       # 熱解析レイヤ : 発熱密度がセル毎の材料を参照していることの検証
       # (熱解析レイヤは CPU 版のみなので build-mpi / build-cuda では実行しない)
       - name: Validation test — thermal per-cell material
         run: sh data/sample/thermal_material_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-thermal
+
+      # HDF5 の構成 (build-cpu と同じ判定)。h5ls が無ければ ofd_h5check に落ちる
+      - name: Validation test — HDF5 layout
+        run: sh data/sample/hdf5_layout_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-h5layout
 
       # ベクトル化更新経路 (-vector) と通常経路の一致 (build-cpu と同じ判定)
       - name: Validation test — vector / no-vector consistency
@@ -282,6 +298,23 @@ jobs:
         shell: bash
         run: sh data/sample/vector_check.sh "$GITHUB_WORKSPACE/bin/ofd.exe" /tmp/smoke-vector
 
+      # HDF5 の構成。**ここが今まで Windows と macOS で完全に空白だった** —
+      # vcpkg の静的ビルドには h5ls が付いてこないので検査を飛ばしていて、
+      # 表示側 (OpenFDTD-X) が読むデータが Windows だけ欠けていても
+      # ソルバーは normal end で終わるため気付けなかった。
+      # tools/h5check.c (ofd_h5check) を使えばツール類が無くても検査できる。
+      - name: Build ofd_h5check (HDF5 layout checker)
+        run: cmake --build build --target ofd_h5check
+
+      - name: Validation test — HDF5 layout
+        shell: bash
+        run: sh data/sample/hdf5_layout_check.sh "$GITHUB_WORKSPACE/bin/ofd.exe" /tmp/smoke-h5layout
+
+      # PML の反射 (build-cpu と同じ判定)。時系列は ofd_h5check -d で読む
+      - name: Validation test — PML reflection
+        shell: bash
+        run: sh data/sample/pml_reflection_check.sh "$GITHUB_WORKSPACE/bin/ofd.exe" /tmp/smoke-pml
+
       - name: Upload binaries (artifact)
         uses: actions/upload-artifact@v4
         with:
@@ -372,6 +405,22 @@ jobs:
           OFD_ARGS: -p 1 1 2
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-tpa
 
+      # HDF5 の構成。MPI 版は rank 0 だけが書くので、分割しても
+      # 表示側の契約が変わらないことを確かめる
+      - name: Validation test — HDF5 layout (2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -p 1 1 2
+        run: sh data/sample/hdf5_layout_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-h5layout
+
+      # PML の反射 (CPU 版と同じスクリプト・同じ許容値)。z 方向に分割するので
+      # PML 層がランク境界をまたがない面 (z±) と、またぐ面 (x±, y±) の両方がある
+      - name: Validation test — PML reflection (2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -p 1 1 2
+        run: sh data/sample/pml_reflection_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-pml
+
       # ベクトル化更新経路 (-vector) は領域分割と組み合わせたときも
       # 通常経路と一致すること (係数配列 K1/K2 の展開範囲は
       # iMin..iMax などランクごとの担当範囲で決まるため、
@@ -421,12 +470,28 @@ jobs:
       - name: Configure / build (CUDA)
         run: |
           cmake -B build-cuda -DCMAKE_BUILD_TYPE=Release -DWITH_CUDA=ON -DWITH_MPI=OFF
-          cmake --build build-cuda --target ofd_cuda -j"$(nproc)"
+          cmake --build build-cuda --target ofd_cuda ofd_h5check -j"$(nproc)"
 
       - name: Validation test — TPA slab (ofd_cuda, CPU execution mode)
         env:
           OFD_ARGS: -cpu
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda" /tmp/cuda-tpa
+
+      # HDF5 の構成。CUDA 版はデバイスからホストへ写してから書くので、
+      # 書き出しの経路が CPU 版と別になる (実機 GPU で落ちる不具合が
+      # 過去にあった)。-cpu 実行でも契約が変わらないことを確かめる
+      - name: Validation test — HDF5 layout (ofd_cuda, CPU execution mode)
+        env:
+          OFD_ARGS: -cpu
+        run: sh data/sample/hdf5_layout_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda" /tmp/cuda-h5layout
+
+      # PML の反射。CUDA 版の PML は cuda/pml*.cu の別実装 (-cpu 実行は
+      # 同じファイルのホスト側経路を通る) なので、ここで物理を確かめる
+      # (ofd_h5check は上で一緒にビルド)
+      - name: Validation test — PML reflection (ofd_cuda, CPU execution mode)
+        env:
+          OFD_ARGS: -cpu
+        run: sh data/sample/pml_reflection_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda" /tmp/cuda-pml
 
       # CUDA 版も -vector を受け付ける (cuda/update*.cu が VECTOR を見て
       # 係数配列と材料 ID 参照を切り替える)。-cpu 実行なのでカーネル起動
@@ -452,6 +517,12 @@ jobs:
           OFD_LAUNCHER: mpirun --oversubscribe -n 2
           OFD_ARGS: -cpu -p 1 1 2
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-tpa
+
+      - name: Validation test — PML reflection (ofd_cuda_mpi, 2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -cpu -p 1 1 2
+        run: sh data/sample/pml_reflection_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-pml
 
       - name: Upload logs on failure
         if: failure()

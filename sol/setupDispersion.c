@@ -9,23 +9,39 @@ setup dispersion data
 static void setupDispersion_id(int);
 
 
+/*
+RC (recursive convolution) factors of dispersion material (type = 2)
+
+eps(w) = einf + ae / (jw) + be / (ce + jw)
+chi(t) = ae + be * exp(-ce * t)  (t >= 0)
+
+xi0  = integral of chi(t) over [0, dt]
+dxi0 = xi(0) - xi(1) (be term only, the ae term is constant)
+ke   = exp(-ce * dt) = dxi(m + 1) / dxi(m)
+
+ce = 0 is the limit ce -> 0 (be / ce * (1 - ke) -> be * dt, dxi0 -> 0) :
+"material = 2 einf ae 0 0" (conductivity only) must not give 0 / 0.
+*/
+void dispersionFactor(double ae, double be, double ce, double dt, double *xi0, double *dxi0, double *ke)
+{
+	const double k = exp(-ce * dt);
+	const double b = (ce != 0) ? (be / ce) * (1 - k) : be * dt;  // integral of be * exp(-ce * t)
+	*xi0 = (ae * dt) + b;
+	*dxi0 = (ce != 0) ? b * (1 - k) : 0;
+	*ke = k;
+}
+
+
 void setupDispersion(void)
 {
 	for (int m = 0; m < NMaterial; m++) {
 		if (Material[m].type == 2) {
 			const double einf = Material[m].einf;
-			const double ae   = Material[m].ae;
-			const double be   = Material[m].be;
-			const double ce   = Material[m].ce;
-			const double ke = exp(-ce * Dt);
-			const double xi0 = (ae * Dt) + (be / ce) * (1 - ke);
-			const double dxi0 = (be / ce) * (1 - ke) * (1 - ke);
-			//printf("%d %e %e %e %e\n", m, einf, ae, be, ce);
-			//printf("%d %e %e %e\n", m, ke, xi0, dxi0);
+			double xi0, dxi0, ke;
+			dispersionFactor(Material[m].ae, Material[m].be, Material[m].ce, Dt, &xi0, &dxi0, &ke);
 			Material[m].edisp[0] = (real_t)(1 / (einf + xi0));
 			Material[m].edisp[1] = (real_t)dxi0;
 			Material[m].edisp[2] = (real_t)ke;
-			//printf("%d %e %e %e\n", m, Material[m].edisp[0], Material[m].edisp[1], Material[m].edisp[2]);
 		}
 	}
 

@@ -79,11 +79,8 @@ static void setup_material(void)
 		}
 		else if (Material[m].type == 2) {
 			const double einf = Material[m].einf;
-			const double ae   = Material[m].ae;
-			const double be   = Material[m].be;
-			const double ce   = Material[m].ce;
-			const double ke = exp(-ce * Dt);
-			const double xi0 = (ae * Dt) + (be / ce) * (1 - ke);
+			double xi0, dxi0, ke;
+			dispersionFactor(Material[m].ae, Material[m].be, Material[m].ce, Dt, &xi0, &dxi0, &ke);
 			const double denom = einf + xi0;
 			C1[m] = (real_t)(einf / denom);
 			C2[m] = (real_t)(1    / denom);
@@ -162,18 +159,6 @@ static void setup_mesh(void)
 
 
 // Mur factor
-double factorMur(double d, id_t m)
-{
-	if (m != PEC) {
-		const double vdt = (C * Dt) / sqrt(Material[m].epsr * Material[m].amur);
-		return (vdt - d) / (vdt + d);
-	}
-	else {
-		return -1;
-	}
-}
-
-
 // setup
 void setup(void)
 {

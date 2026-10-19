@@ -202,6 +202,21 @@ int hdf5_open(int with_timeseries)
 			d[0] = (hsize_t)NGline; d[1] = 2; d[2] = 3;
 			write_dataset(gid, "Gline", 3, d, H5T_NATIVE_DOUBLE, Gline);
 		}
+		/* 線分ごとの材料 id。表示側が材料別に色を変えるのに使う。
+		   id_t はビルド構成で幅が変わる (_ID16 なら unsigned short、
+		   既定は unsigned char) ので、そのまま書くとファイルの型が
+		   ビルドに依存してしまう。必ず int32 に直してから書く。 */
+		if ((NGline > 0) && (MGline != NULL)) {
+			int32_t *buf = (int32_t *)malloc((size_t)NGline * sizeof(int32_t));
+			if (buf != NULL) {
+				for (int64_t n = 0; n < NGline; n++) {
+					buf[n] = (int32_t)MGline[n];
+				}
+				d[0] = (hsize_t)NGline;
+				write_dataset(gid, "MGline", 1, d, H5T_NATIVE_INT32, buf);
+				free(buf);
+			}
+		}
 		H5Gclose(gid);
 	}
 

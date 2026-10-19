@@ -77,7 +77,9 @@ static void _outputSpara(FILE *fp)
 		fprintf(fp, "  %13.5e", Freq1[ifreq]);
 		for (int ipoint = 0; ipoint < NPoint; ipoint++) {
 			const int id = (ipoint * NFreq1) + ifreq;
-			fprintf(fp, "%9.3f%9.3f", 20 * log10(MAX(d_abs(Spara[id]), EPS2)), d_deg(Spara[id]));
+			double mag, deg;
+			dbDeg(Spara[id], &mag, &deg);  /* sol/utils.c */
+			fprintf(fp, "%9.3f%9.3f", mag, deg);
 		}
 		fprintf(fp, "\n");
 	}
@@ -102,8 +104,7 @@ static void write_spara_data_to_hdf5()
         for (int ipoint = 0; ipoint < NPoint; ipoint++) {
             const int id = (ipoint * NFreq1) + ifreq;
             const size_t did = (size_t)ifreq * NPoint + ipoint;
-            data[did].magnitude_dB = 20 * log10(MAX(d_abs(Spara[id]), EPS2));
-            data[did].phase_deg = d_deg(Spara[id]);
+            dbDeg(Spara[id], &data[did].magnitude_dB, &data[did].phase_deg);  /* sol/utils.c */
         }
     }
 
