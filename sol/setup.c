@@ -158,7 +158,6 @@ static void setup_mesh(void)
 }
 
 
-// Mur factor
 // setup
 void setup(void)
 {
