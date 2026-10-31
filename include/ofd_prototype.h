@@ -99,7 +99,7 @@ extern void        setupPmlEz(int);
 extern void        setupPmlHx(int);
 extern void        setupPmlHy(int);
 extern void        setupPmlHz(int);
-extern void        setupSize(int, int, int, int);
+extern int         setupSize(int, int, int, int);
 extern void        setup_cells(int, int, int, int *, int *, int *);
 extern void        setup_center(void);
 extern void        setup_geomline3d(void);
