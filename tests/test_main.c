@@ -52,6 +52,7 @@ void test_feedload(void);
 void test_update(void);
 void test_observe(void);
 void test_setup(void);
+void test_input(void);
 
 typedef struct {
 	const char *name;
@@ -79,6 +80,7 @@ static const testcase_t tests[] = {
 	{"update",     test_update},
 	{"observe",    test_observe},
 	{"setup",      test_setup},
+	{"input",      test_input},
 };
 
 static const int ntest = (int)(sizeof(tests) / sizeof(tests[0]));

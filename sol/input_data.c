@@ -131,7 +131,10 @@ int input_data(FILE *fp)
 			nline++;
 		}
 		else if (!strcmp(strkey, "title")) {
-			strcpy(Title, strchr(strsave, '=') + 2);
+			// Title は 256 バイト固定 (行バッファは BUFSIZ)。長い title で
+			// あふれないよう切り詰める
+			strncpy(Title, strchr(strsave, '=') + 2, sizeof(Title) - 1);
+			Title[sizeof(Title) - 1] = '\0';
 		}
 		else if (!strcmp(strkey, "xmesh")) {
 			if ((ntoken < 5) || (ntoken % 2 == 0)) {
@@ -176,7 +179,11 @@ int input_data(FILE *fp)
 			}
 		}
 		else if (!strcmp(strkey, "material")) {
-			if (ntoken < 7) {
+			// Ver. 2.1 以前は type の欄が無く "material = εr σ μr σm" (6 トークン)。
+			// 以前は一律に 7 トークンを要求していたため、下の旧形式の分岐に
+			// 到達できず旧形式の入力がすべて "invalid material" になっていた
+			const int legacy = !strcmp(prog, "OpenFDTD") && (version < 22);
+			if (ntoken < (legacy ? 6 : 7)) {
 				printf(errfmt3, strkey, (int)NMaterial - 1);
 				return 1;
 			}
@@ -488,7 +495,9 @@ int input_data(FILE *fp)
 				Solver.maxiter = atoi(token[2]);
 				Solver.nout    = atoi(token[3]);
 				Solver.converg = atof(token[4]);
-				if (Solver.maxiter % Solver.nout != 0) {
+				// nout <= 0 は後段の検査で "invalid solver data" にする
+				// (ここで剰余をとると 0 除算で落ちる)
+				if ((Solver.nout > 0) && (Solver.maxiter % Solver.nout != 0)) {
 					Solver.maxiter = (Solver.maxiter / Solver.nout + 1) * Solver.nout;
 				}
 			}
@@ -570,6 +579,11 @@ int input_data(FILE *fp)
 	}
 	if (NFeed && IPlanewave) {
 		printf("%s\n", "*** feed and planewave");
+		return 1;
+	}
+	// 平面波のパルス幅と基準点は周波数から決める (sol/input2.c setup_planewave)
+	if (IPlanewave && (NFreq1 <= 0) && (NFreq2 <= 0)) {
+		printf("%s\n", "*** planewave requires frequency1 or frequency2");
 		return 1;
 	}
 	// HDF5 の瞬時値スナップショットは Solver.nout ごとにしか出せないので、

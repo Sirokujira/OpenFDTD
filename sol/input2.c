@@ -335,7 +335,13 @@ void setup_planewave(void)
     // 全成分を計算値のまま使うこと : 以前は r0[2] を 0.5e-6 [m] に上書き
     // していたが、これは光学サンプル向けの決め打ちで、他のスケールでは
     // 基準点が解析領域の内部に入り遅延時間の基準が壊れる。
-    const double f0 = (Freq2[0] + Freq2[NFreq2 - 1]) / 2;
+    //
+    // f0 は frequency2 の中央 (無ければ frequency1 の中央)。半波長の余裕と
+    // 下のパルス幅に使う。以前は Freq2 を無条件に読んでいたので、frequency2
+    // の無い平面波入力 (frequency1 だけ) が NULL 参照で落ちていた。
+    // 周波数が 1 つも無い平面波は input_data() がエラーにする。
+    const double f0 = (NFreq2 > 0) ? (Freq2[0] + Freq2[NFreq2 - 1]) / 2
+                                   : (Freq1[0] + Freq1[NFreq1 - 1]) / 2;
     const double r = sqrt((Xn[0] - Xn[Nx]) * (Xn[0] - Xn[Nx]) +
                           (Yn[0] - Yn[Ny]) * (Yn[0] - Yn[Ny]) +
                           (Zn[0] - Zn[Nz]) * (Zn[0] - Zn[Nz])) / 2 + (0.5 * C / f0);
