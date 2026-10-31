@@ -6,6 +6,18 @@ input2.c
 #include "ofd_prototype.h"
 
 
+// dual cell length at node i (0 <= i <= n)
+// interior : distance between the neighbouring cell centers
+// boundary : the boundary cell length (same as RXn[0] / RXn[Nx] in setup_mesh)
+//            (c[i - 1] / c[n] do not exist : c has n entries)
+static double dual(const double *node, const double *center, int i, int n)
+{
+    if ((n <= 1) || (i <= 0)) return node[1] - node[0];
+    if (i >= n)               return node[n] - node[n - 1];
+    return center[i] - center[i - 1];
+}
+
+
 // index and length
 static void getindex(char dir, double x, double y, double z,
     int *i, int *j, int *k, double *dx, double *dy, double *dz)
@@ -15,24 +27,24 @@ static void getindex(char dir, double x, double y, double z,
         *j = nearest(y, 0, Ny,     Yn);
         *k = nearest(z, 0, Nz,     Zn);
         *dx = Xn[*i + 1] - Xn[*i];
-        *dy = (Ny > 1) ? (Yc[*j] - Yc[*j - 1]) : (Yn[1] - Yn[0]);
-        *dz = (Nz > 1) ? (Zc[*k] - Zc[*k - 1]) : (Zn[1] - Zn[0]);
+        *dy = dual(Yn, Yc, *j, Ny);
+        *dz = dual(Zn, Zc, *k, Nz);
     }
     else if (dir == 'Y') {
         *j = nearest(y, 0, Ny - 1, Yc);
         *k = nearest(z, 0, Nz,     Zn);
         *i = nearest(x, 0, Nx,     Xn);
         *dy = Yn[*j + 1] - Yn[*j];
-        *dz = (Nz > 1) ? (Zc[*k] - Zc[*k - 1]) : (Zn[1] - Zn[0]);
-        *dx = (Nx > 1) ? (Xc[*i] - Xc[*i - 1]) : (Xn[1] - Xn[0]);
+        *dz = dual(Zn, Zc, *k, Nz);
+        *dx = dual(Xn, Xc, *i, Nx);
     }
     else if (dir == 'Z') {
         *k = nearest(z, 0, Nz - 1, Zc);
         *i = nearest(x, 0, Nx,     Xn);
         *j = nearest(y, 0, Ny,     Yn);
         *dz = Zn[*k + 1] - Zn[*k];
-        *dx = (Nx > 1) ? (Xc[*i] - Xc[*i - 1]) : (Xn[1] - Xn[0]);
-        *dy = (Ny > 1) ? (Yc[*j] - Yc[*j - 1]) : (Yn[1] - Yn[0]);
+        *dx = dual(Xn, Xc, *i, Nx);
+        *dy = dual(Yn, Yc, *j, Ny);
     }
 }
 

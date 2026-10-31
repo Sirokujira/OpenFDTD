@@ -702,6 +702,14 @@ int input_data(FILE *fp)
 		free(ypoint);
 		free(zpoint);
 	}
+	if (nload) {
+		free(dload);
+		free(xload);
+		free(yload);
+		free(zload);
+		free(cload);
+		free(pload);
+	}
 
 	return 0;
 }
