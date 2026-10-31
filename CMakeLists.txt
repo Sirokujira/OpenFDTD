@@ -566,6 +566,7 @@ if (WITH_TESTS)
         ${CMAKE_SOURCE_DIR}/tests/test_pbc.c
         ${CMAKE_SOURCE_DIR}/tests/test_feedload.c
         ${CMAKE_SOURCE_DIR}/tests/test_update.c
+        ${CMAKE_SOURCE_DIR}/tests/test_observe.c
     )
 
     # テスト対象の実装 (グローバル状態に依存しない自己完結した翻訳単位)
@@ -614,6 +615,10 @@ if (WITH_TESTS)
         ${CMAKE_SOURCE_DIR}/sol/updateHx.c
         ${CMAKE_SOURCE_DIR}/sol/updateHy.c
         ${CMAKE_SOURCE_DIR}/sol/updateHz.c
+        ${CMAKE_SOURCE_DIR}/sol/setupDft.c
+        ${CMAKE_SOURCE_DIR}/sol/dftNear3d.c
+        ${CMAKE_SOURCE_DIR}/sol/vpoint.c
+        ${CMAKE_SOURCE_DIR}/sol/average.c
     )
 
     add_executable(ofd_tests ${TEST_SOURCES} ${TEST_TARGET_SOURCES})
@@ -627,7 +632,7 @@ if (WITH_TESTS)
 
     # テスト名は tests/test_main.c のテーブルと対応している。
     # 1 件ずつ add_test することで、どれが落ちたか CTest の出力で分かる。
-    foreach(t complex finc utils vfeed ingeometry geomlines setupid farfield outputzin outputspara outputcoupling outputcross dispersion pml mur pbc feedload update)
+    foreach(t complex finc utils vfeed ingeometry geomlines setupid farfield outputzin outputspara outputcoupling outputcross dispersion pml mur pbc feedload update observe)
         add_test(NAME ${t} COMMAND ofd_tests ${t})
     endforeach()
 endif()
