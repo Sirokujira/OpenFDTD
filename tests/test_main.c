@@ -53,6 +53,7 @@ void test_update(void);
 void test_observe(void);
 void test_setup(void);
 void test_input(void);
+void test_tpa(void);
 
 typedef struct {
 	const char *name;
@@ -81,6 +82,7 @@ static const testcase_t tests[] = {
 	{"observe",    test_observe},
 	{"setup",      test_setup},
 	{"input",      test_input},
+	{"tpa",        test_tpa},
 };
 
 static const int ntest = (int)(sizeof(tests) / sizeof(tests[0]));
