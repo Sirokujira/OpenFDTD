@@ -386,6 +386,7 @@ sh data/sample/pec_plate_check.sh /path/to/bin/ofd /tmp/pec
 | 全電界 (導体の中) | 0 | < 1e-3 | 2e-7 |
 | 散乱界 (全域) | \|Es\| = 1 | ±0.03 | 0.008 |
 
+線 (near1d) と面 (near2d) は入射界を別々のコードで足すので、両方を判定します。
 入射界の符号・中心・波数 (5%)・位相の欠落、入射界を引く・noinc を反転する
 変異はすべて NG になります。MPI / CUDA には `OFD_LAUNCHER` / `OFD_ARGS` で
 同じスクリプトを掛けられます (CI の 5 ジョブで実行)。

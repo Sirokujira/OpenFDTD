@@ -16,7 +16,11 @@ title = plane wave on a PEC plate : standing wave
 #            |E| = 0                 (導体の中)
 #   散乱界   |Es| = 1                (z > 0 では反射波、導体の中では -入射波)
 #
-# 判定 (2026-11 の実測):
+# 線 (plotnear1d, post/outputNear1d.c) と面 (plotnear2d, post/outputNear2d.c) は
+# 入射界を別々のコードで足すので、両方を同じ解析解で判定する (面は y = 0 の
+# xz 面。x 方向は周期なので値は z だけで決まる)。
+#
+# 判定 (2026-11 の実測。線・面とも同じ値):
 #   全電界 : z > 0 で max| |E| - 2|sin kz| | < 0.1    (実測 0.053。λ/20 の格子の
 #            数値分散で節の位置が少しずれる分)
 #            導体の中で max|E| < 1e-3                   (実測 3e-7)
@@ -31,4 +35,7 @@ frequency2 = 3e9 3e9 0
 solver = 4000 100 1e-4
 plotnear1d = E Z 0 0
 near1dnoinc = 0
+plotnear2d = E Y 0
+near2ddim = 0 0
+near2dnoinc = 0
 end
