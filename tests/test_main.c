@@ -55,6 +55,7 @@ void test_setup(void);
 void test_input(void);
 void test_tpa(void);
 void test_size(void);
+void test_vector(void);
 
 typedef struct {
 	const char *name;
@@ -85,6 +86,7 @@ static const testcase_t tests[] = {
 	{"input",      test_input},
 	{"tpa",        test_tpa},
 	{"size",       test_size},
+	{"vector",     test_vector},
 };
 
 static const int ntest = (int)(sizeof(tests) / sizeof(tests[0]));

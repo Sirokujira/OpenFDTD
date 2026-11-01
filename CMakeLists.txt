@@ -571,6 +571,7 @@ if (WITH_TESTS)
         ${CMAKE_SOURCE_DIR}/tests/test_input.c
         ${CMAKE_SOURCE_DIR}/tests/test_tpa.c
         ${CMAKE_SOURCE_DIR}/tests/test_size.c
+        ${CMAKE_SOURCE_DIR}/tests/test_vector.c
     )
 
     # テスト対象の実装 (グローバル状態に依存しない自己完結した翻訳単位)
@@ -641,7 +642,7 @@ if (WITH_TESTS)
 
     # テスト名は tests/test_main.c のテーブルと対応している。
     # 1 件ずつ add_test することで、どれが落ちたか CTest の出力で分かる。
-    foreach(t complex finc utils vfeed ingeometry geomlines setupid farfield outputzin outputspara outputcoupling outputcross dispersion pml mur pbc feedload update observe setup input tpa size)
+    foreach(t complex finc utils vfeed ingeometry geomlines setupid farfield outputzin outputspara outputcoupling outputcross dispersion pml mur pbc feedload update observe setup input tpa size vector)
         add_test(NAME ${t} COMMAND ofd_tests ${t})
     endforeach()
 endif()
