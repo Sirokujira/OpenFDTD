@@ -6,6 +6,7 @@
 #   - 給電・観測点・負荷を領域の端の節点に置くと配列外を読む (sol/input2.c)
 #   - load の作業配列のリーク (sol/input_data.c)
 #   - ofd_post の近傍界 1D 作図のリーク (post/plot2dNear1d0.c)
+#   - frequency2 の無い入力で Debug ビルドが assert で止まる (sol/farfield.c)
 # を見つけている。ここでは data/sample/*.ofd をすべて反復 20 回に縮めて走らせ、
 # ソルバーと ofd_post のどちらかで sanitizer が何か報告したら失敗にする。
 #
@@ -57,9 +58,25 @@ for f in "$SRCDIR"/*.ofd; do
 	n=$((n + 1))
 done
 
+# frequency2 の無い入力 (正当な入力。全サンプルが frequency2 を持つので別に作る)。
+# 以前は alloc_farfield() の assert で Debug ビルドが計算の後に abort していた
+d="$WORK/nofreq2"
+mkdir -p "$d"
+sed -e 's/^solver = .*/solver = 20 10 0/' -e '/^frequency2/d' "$SRCDIR/dipole.ofd" > "$d/run.ofd"
+(cd "$d" && "$OFD" -n 1 run.ofd > sol.txt 2>&1) || true
+(cd "$d" && "$POST" -n 1 run.ofd > post.txt 2>&1) || true
+for t in sol post; do
+	if grep -q "ERROR: AddressSanitizer\|ERROR: LeakSanitizer\|Assertion" "$d/$t.txt" \
+	   || ! grep -q "normal end" "$d/ofd.log" 2>/dev/null; then
+		echo "*** nofreq2 ($t) :"
+		grep -m3 "ERROR:\|Assertion" "$d/$t.txt"
+		status=1
+	fi
+done
+
 if [ "$status" -ne 0 ]; then
 	echo "*** ASan check FAILED" >&2
 else
-	echo "ASan check passed ($n samples, ofd (no-vector / vector) + ofd_post)"
+	echo "ASan check passed ($n samples + no-frequency2 input, ofd (no-vector / vector) + ofd_post)"
 fi
 exit $status

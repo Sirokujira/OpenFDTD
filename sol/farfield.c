@@ -96,7 +96,9 @@ void alloc_farfield(void)
 {
 	size_t size;
 
-	assert((Nx > 0) && (Ny > 0) && (Nz > 0) && (NFreq2 > 0));
+	// NFreq2 = 0 (frequency2 の無い入力) も正当。outputChars() は無条件に呼ぶので、
+	// 面の幾何だけ作って周波数ごとの配列は持たない (ofd.out の Surface はこの幾何)
+	assert((Nx > 0) && (Ny > 0) && (Nz > 0) && (NFreq2 >= 0));
 
 	NSurface = 2 * ((Nx * Ny) + (Ny * Nz) + (Nz * Nx));
 	//printf("%zd %d\n", NSurface, NFreq2);

@@ -615,6 +615,37 @@ static void test_setup_surface(void)
 	free_grid();
 }
 
+/* 4b. frequency2 の無い入力 (NFreq2 = 0) でも面の幾何は作れること。
+       outputChars() はこの 2 つを無条件に呼ぶ。以前は alloc_farfield() が
+       NFreq2 > 0 を assert していて、Debug ビルド (CI の ASan を含む) では
+       frequency2 の無い入力が計算の後に abort し、ofd.out が書かれなかった */
+static void test_setup_surface_nofreq2(void)
+{
+	alloc_grid(1);
+	free(Freq2);
+	Freq2 = NULL;
+	NFreq2 = 0;
+
+	alloc_farfield();
+	CHECK(NSurface == 2 * ((NG * NG) + (NG * NG) + (NG * NG)));
+	setup_farfield();
+
+	const double a = gxn[NG] - gxn[0];
+	const double b = gyn[NG] - gyn[0];
+	const double c = gzn[NG] - gzn[0];
+	double sum = 0;
+	for (int64_t n = 0; n < NSurface; n++) sum += Surface[n].ds;
+	CHECK_NEAR(sum, 2 * ((a * b) + (b * c) + (c * a)), 1e-12);
+
+	free(SurfaceEx); free(SurfaceEy); free(SurfaceEz);
+	free(SurfaceHx); free(SurfaceHy); free(SurfaceHz);
+	free(Surface);
+	Surface = NULL;
+	SurfaceEx = SurfaceEy = SurfaceEz = SurfaceHx = SurfaceHy = SurfaceHz = NULL;
+	free_grid();
+	NFreq2 = 0;
+}
+
 /* ---------------------------------------------------------------- */
 /* 5. farfactor() : 正規化係数                                       */
 /* ---------------------------------------------------------------- */
@@ -683,5 +714,6 @@ void test_farfield(void)
 	test_far_component();
 	test_node_interp();
 	test_setup_surface();
+	test_setup_surface_nofreq2();
 	test_far_factor();
 }

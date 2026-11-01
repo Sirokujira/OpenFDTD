@@ -59,7 +59,7 @@ ctest --test-dir build --output-on-failure   # 全件
 | `alloc` | `sol/memallocfree?.c`, `sol/initfield.c` | 配列の確保と解放。構成 (Mur/PML × vector 有無 × 近傍界の有無) ごとに確保し、各配列を**使う側の範囲いっぱいまで書き込み**、解放後に全ポインタを NULL にする。CI の ASan ステップで、確保不足は heap-buffer-overflow、解放漏れは (どこからも指されなくなるので) LeakSanitizer で検出される。書き込んだ後に `initfield()` が時間発展の状態 (E/H、Mur、PML 分割成分、収束履歴、給電・観測点の時系列、近傍界 DFT の和、`Niter`) をすべて 0 に戻すことも確かめる |
 | `monitor` | `sol/monitor.c` | ofd.log の行の形 (検証スクリプトが grep する `ABC = PML`・`normal end` など)、メモリ量・出力ファイルの見積りが**実際の確保量の ±5% で正** (1 周波数 × 1300³ セルで int の桁あふれが起きないこと) |
 | `plot3d` | `sol/plot3dGeom.c`, `sol/ev3d.c` | 形状の 3D 表示 (plot3dgeom)。geom.ev3 を読み、形状の線分がすべて描かれ**材料 id で色が分かれる** (PEC 黒 / その他マゼンタ)、格子線が 2(N+1)×3 本、給電・インダクタ・観測点 (差分用 2 点込み) がその辺を各色で、タイトル、HTML 版の出力 |
-| `farfield` | `sol/farfield.c`, `sol/nearfield_c.c` | 微小ダイポールの放射パターン (電気/磁気/Huygens)、等価電磁流 `n̂×H` / `-n̂×E` の 6 成分すべて、位相因子 `exp(+jk r̂·r')` の符号、偏波分解 (直線/円/楕円と `\|E\|²=長軸²+短軸²=RHCP²+LHCP²`)、節点補間が一次関数を厳密に再現すること、面の幾何 (法線・位置・面素・PBC)、正規化係数 `farfactor` |
+| `farfield` | `sol/farfield.c`, `sol/nearfield_c.c` | 微小ダイポールの放射パターン (電気/磁気/Huygens)、等価電磁流 `n̂×H` / `-n̂×E` の 6 成分すべて、位相因子 `exp(+jk r̂·r')` の符号、偏波分解 (直線/円/楕円と `\|E\|²=長軸²+短軸²=RHCP²+LHCP²`)、節点補間が一次関数を厳密に再現すること、面の幾何 (法線・位置・面素・PBC)、正規化係数 `farfactor` 。frequency2 の無い入力 (NFreq2 = 0) でも面の幾何が作れること |
 
 ## テストを足すとき
 
