@@ -104,7 +104,7 @@ void test_readhdf5(void)
 	Feed = (feed_t *)calloc(1, sizeof(feed_t));
 	Feed[0].dir = 'Y'; Feed[0].i = 2; Feed[0].j = 1; Feed[0].k = 3;
 	Feed[0].dx = 0.1; Feed[0].dy = 0.2; Feed[0].dz = 0.3;
-	Feed[0].volt = 1.5; Feed[0].delay = 2e-10; Feed[0].z0 = 73;
+	Feed[0].volt = 1.5; Feed[0].delay = 2e-10; Feed[0].z0 = 37.5;   /* 50 でも 73 でもない値 (読み手が定数を入れる変異を捕まえる) */
 	const feed_t feed0 = Feed[0];
 	const double pin0[2] = {0.75, 1.25}, pin1[2] = {0.8, 1.5};
 	Pin[0] = dup(pin0, 2); Pin[1] = dup(pin1, 2);
@@ -166,7 +166,7 @@ void test_readhdf5(void)
 		CHECK(ok);
 	}
 	CHECK((Feed != NULL) && (Feed[0].dir == 'Y') && (Feed[0].i == 2) && (Feed[0].j == 1) && (Feed[0].k == 3));
-	CHECK((Feed != NULL) && (Feed[0].dz == feed0.dz) && (Feed[0].volt == feed0.volt) && (Feed[0].delay == feed0.delay) && (Feed[0].z0 == 73));
+	CHECK((Feed != NULL) && (Feed[0].dz == feed0.dz) && (Feed[0].volt == feed0.volt) && (Feed[0].delay == feed0.delay) && (Feed[0].z0 == 37.5));
 	CHECK(same(Pin[0], pin0, 2) && same(Pin[1], pin1, 2));
 	/* 遠方界の等価面は ofd.out と同じ大きさで確保される (/metadata の NSurface は
 	   ここでは 2 を書いたのでそれを読む。ソルバーが書く普通のファイルでは 0 で、
