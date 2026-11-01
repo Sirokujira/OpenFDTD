@@ -592,6 +592,8 @@ static void ev3d_end_html(FILE *fp, const char fn[])
 	// tailor
 	fprintf(fp, "</body>\n");
 	fprintf(fp, "</html>\n");
+
+	free(ndata);
 }
 
 

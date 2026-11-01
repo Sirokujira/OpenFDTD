@@ -58,6 +58,7 @@ ctest --test-dir build --output-on-failure   # 全件
 | `outfile` | `sol/writeout.c` ↔ `post/readout.c` | ソルバーと ofd_post の間の **ofd.out の契約**。全項目に値を入れて書き、グローバルを消して ofd_post の readout で読み戻し、全項目が一致・ファイルを読み切ることを確かめる。int64_t の NGline / NSurface (ファイル上は 4 バイト) は上位ビットにごみを入れてから読み、正しく置き換わること |
 | `alloc` | `sol/memallocfree?.c` | 配列の確保と解放。構成 (Mur/PML × vector 有無 × 近傍界の有無) ごとに確保し、各配列を**使う側の範囲いっぱいまで書き込み**、解放後に全ポインタを NULL にする。CI の ASan ステップで、確保不足は heap-buffer-overflow、解放漏れは (どこからも指されなくなるので) LeakSanitizer で検出される |
 | `monitor` | `sol/monitor.c` | ofd.log の行の形 (検証スクリプトが grep する `ABC = PML`・`normal end` など)、メモリ量・出力ファイルの見積りが**実際の確保量の ±5% で正** (1 周波数 × 1300³ セルで int の桁あふれが起きないこと) |
+| `plot3d` | `sol/plot3dGeom.c`, `sol/ev3d.c` | 形状の 3D 表示 (plot3dgeom)。geom.ev3 を読み、形状の線分がすべて描かれ**材料 id で色が分かれる** (PEC 黒 / その他マゼンタ)、格子線が 2(N+1)×3 本、給電・インダクタ・観測点 (差分用 2 点込み) がその辺を各色で、タイトル、HTML 版の出力 |
 | `farfield` | `sol/farfield.c`, `sol/nearfield_c.c` | 微小ダイポールの放射パターン (電気/磁気/Huygens)、等価電磁流 `n̂×H` / `-n̂×E` の 6 成分すべて、位相因子 `exp(+jk r̂·r')` の符号、偏波分解 (直線/円/楕円と `\|E\|²=長軸²+短軸²=RHCP²+LHCP²`)、節点補間が一次関数を厳密に再現すること、面の幾何 (法線・位置・面素・PBC)、正規化係数 `farfactor` |
 
 ## テストを足すとき
