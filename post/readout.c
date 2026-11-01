@@ -6,6 +6,14 @@ read ofd.out
 
 #include "ofd.h"
 
+// 個数 0 の配列は malloc(0) が NULL を返し得る。fread(NULL, size, 0, fp) は
+// 読む量が 0 でも C の規格上は未定義動作なので、0 個なら呼ばない
+// (sol/writeout.c の wr() と対)
+static size_t rd(void *p, size_t size, size_t n, FILE *fp)
+{
+	return (n > 0) ? fread(p, size, n, fp) : 0;
+}
+
 void readout(FILE *fp)
 {
 	size_t num = 0;
@@ -15,28 +23,28 @@ void readout(FILE *fp)
 	// 受けてから代入する (sol/writeout.c と対)
 	int ngline = 0, nsurface = 0;
 
-	num += fread(Title,           sizeof(char),        256, fp);
-	num += fread(&Nx,             sizeof(int),         1,   fp);
-	num += fread(&Ny,             sizeof(int),         1,   fp);
-	num += fread(&Nz,             sizeof(int),         1,   fp);
-	num += fread(&Ni,             sizeof(int),         1,                             fp);
-	num += fread(&Nj,             sizeof(int),         1,                             fp);
-	num += fread(&Nk,             sizeof(int),         1,                             fp);
-	num += fread(&N0,             sizeof(int),         1,                             fp);
-	num += fread(&NN,             sizeof(int64_t),     1,   fp);
-	num += fread(&NFreq1,         sizeof(int),         1,   fp);
-	num += fread(&NFreq2,         sizeof(int),         1,   fp);
-	num += fread(&NFeed,          sizeof(int),         1,   fp);
-	num += fread(&NPoint,         sizeof(int),         1,   fp);
-	num += fread(&Niter,          sizeof(int),         1,   fp);
-	num += fread(&Ntime,          sizeof(int),         1,   fp);
-	num += fread(&Solver.maxiter, sizeof(int),         1,   fp);
-	num += fread(&Solver.nout,    sizeof(int),         1,   fp);
-	num += fread(&Dt,             sizeof(double),      1,   fp);
-	num += fread(&ngline,         sizeof(int),         1,   fp);
+	num += rd(Title,           sizeof(char),        256, fp);
+	num += rd(&Nx,             sizeof(int),         1,   fp);
+	num += rd(&Ny,             sizeof(int),         1,   fp);
+	num += rd(&Nz,             sizeof(int),         1,   fp);
+	num += rd(&Ni,             sizeof(int),         1,                             fp);
+	num += rd(&Nj,             sizeof(int),         1,                             fp);
+	num += rd(&Nk,             sizeof(int),         1,                             fp);
+	num += rd(&N0,             sizeof(int),         1,                             fp);
+	num += rd(&NN,             sizeof(int64_t),     1,   fp);
+	num += rd(&NFreq1,         sizeof(int),         1,   fp);
+	num += rd(&NFreq2,         sizeof(int),         1,   fp);
+	num += rd(&NFeed,          sizeof(int),         1,   fp);
+	num += rd(&NPoint,         sizeof(int),         1,   fp);
+	num += rd(&Niter,          sizeof(int),         1,   fp);
+	num += rd(&Ntime,          sizeof(int),         1,   fp);
+	num += rd(&Solver.maxiter, sizeof(int),         1,   fp);
+	num += rd(&Solver.nout,    sizeof(int),         1,   fp);
+	num += rd(&Dt,             sizeof(double),      1,   fp);
+	num += rd(&ngline,         sizeof(int),         1,   fp);
 	NGline = ngline;
-	num += fread(&IPlanewave,     sizeof(int),         1,   fp);
-	num += fread(&Planewave,      sizeof(planewave_t), 1,   fp);
+	num += rd(&IPlanewave,     sizeof(int),         1,   fp);
+	num += rd(&Planewave,      sizeof(planewave_t), 1,   fp);
 
 	Xn     =         (double *)malloc(sizeof(double)      * (Nx + 1));
 	Yn     =         (double *)malloc(sizeof(double)      * (Ny + 1));
@@ -59,33 +67,33 @@ void readout(FILE *fp)
 	Spara  =    (d_complex_t *)malloc(sizeof(d_complex_t) * NPoint * NFreq1);
 	Gline  = (double (*)[2][3])malloc(sizeof(double)      * NGline * 2 * 3);
 
-	num += fread(Xn,     sizeof(double),      Nx + 1,                        fp);
-	num += fread(Yn,     sizeof(double),      Ny + 1,                        fp);
-	num += fread(Zn,     sizeof(double),      Nz + 1,                        fp);
-	num += fread(Xc,     sizeof(double),      Nx,                            fp);
-	num += fread(Yc,     sizeof(double),      Ny,                            fp);
-	num += fread(Zc,     sizeof(double),      Nz,                            fp);
-	num += fread(Eiter,  sizeof(double),      Niter,                         fp);
-	num += fread(Hiter,  sizeof(double),      Niter,                         fp);
-	num += fread(VFeed,  sizeof(double),      NFeed  * (Solver.maxiter + 1), fp);
-	num += fread(IFeed,  sizeof(double),      NFeed  * (Solver.maxiter + 1), fp);
-	num += fread(VPoint, sizeof(double),      NPoint * (Solver.maxiter + 1), fp);
-	num += fread(Freq1,  sizeof(double),      NFreq1,                        fp);
-	num += fread(Freq2,  sizeof(double),      NFreq2,                        fp);
-	num += fread(Feed,   sizeof(feed_t),      NFeed,                         fp);
-	num += fread(Zin,    sizeof(d_complex_t), NFeed * NFreq1,                fp);
-	num += fread(Ref,    sizeof(double),      NFeed * NFreq1,                fp);
-	num += fread(Pin[0], sizeof(double),      NFeed * NFreq2,                fp);
-	num += fread(Pin[1], sizeof(double),      NFeed * NFreq2,                fp);
-	num += fread(Spara,  sizeof(d_complex_t), NPoint * NFreq1,               fp);
-	num += fread(Gline,  sizeof(double),      NGline * 2 * 3,                fp);
+	num += rd(Xn,     sizeof(double),      Nx + 1,                        fp);
+	num += rd(Yn,     sizeof(double),      Ny + 1,                        fp);
+	num += rd(Zn,     sizeof(double),      Nz + 1,                        fp);
+	num += rd(Xc,     sizeof(double),      Nx,                            fp);
+	num += rd(Yc,     sizeof(double),      Ny,                            fp);
+	num += rd(Zc,     sizeof(double),      Nz,                            fp);
+	num += rd(Eiter,  sizeof(double),      Niter,                         fp);
+	num += rd(Hiter,  sizeof(double),      Niter,                         fp);
+	num += rd(VFeed,  sizeof(double),      NFeed  * (Solver.maxiter + 1), fp);
+	num += rd(IFeed,  sizeof(double),      NFeed  * (Solver.maxiter + 1), fp);
+	num += rd(VPoint, sizeof(double),      NPoint * (Solver.maxiter + 1), fp);
+	num += rd(Freq1,  sizeof(double),      NFreq1,                        fp);
+	num += rd(Freq2,  sizeof(double),      NFreq2,                        fp);
+	num += rd(Feed,   sizeof(feed_t),      NFeed,                         fp);
+	num += rd(Zin,    sizeof(d_complex_t), NFeed * NFreq1,                fp);
+	num += rd(Ref,    sizeof(double),      NFeed * NFreq1,                fp);
+	num += rd(Pin[0], sizeof(double),      NFeed * NFreq2,                fp);
+	num += rd(Pin[1], sizeof(double),      NFeed * NFreq2,                fp);
+	num += rd(Spara,  sizeof(d_complex_t), NPoint * NFreq1,               fp);
+	num += rd(Gline,  sizeof(double),      NGline * 2 * 3,                fp);
 
-	num += fread(&nsurface, sizeof(int),         1,        fp);
+	num += rd(&nsurface, sizeof(int),         1,        fp);
 	NSurface = nsurface;
 
 	size = NSurface * sizeof(surface_t);
 	Surface = (surface_t *)malloc(size);
-	num += fread(Surface,   sizeof(surface_t),   NSurface, fp);
+	num += rd(Surface,   sizeof(surface_t),   NSurface, fp);
 
 	size = NFreq2 * sizeof(d_complex_t *);
 	SurfaceEx = (d_complex_t **)malloc(size);
@@ -103,12 +111,12 @@ void readout(FILE *fp)
 		SurfaceHy[ifreq] = (d_complex_t *)malloc(size);
 		SurfaceHz[ifreq] = (d_complex_t *)malloc(size);
 
-		num += fread(SurfaceEx[ifreq], sizeof(d_complex_t), NSurface, fp);
-		num += fread(SurfaceEy[ifreq], sizeof(d_complex_t), NSurface, fp);
-		num += fread(SurfaceEz[ifreq], sizeof(d_complex_t), NSurface, fp);
-		num += fread(SurfaceHx[ifreq], sizeof(d_complex_t), NSurface, fp);
-		num += fread(SurfaceHy[ifreq], sizeof(d_complex_t), NSurface, fp);
-		num += fread(SurfaceHz[ifreq], sizeof(d_complex_t), NSurface, fp);
+		num += rd(SurfaceEx[ifreq], sizeof(d_complex_t), NSurface, fp);
+		num += rd(SurfaceEy[ifreq], sizeof(d_complex_t), NSurface, fp);
+		num += rd(SurfaceEz[ifreq], sizeof(d_complex_t), NSurface, fp);
+		num += rd(SurfaceHx[ifreq], sizeof(d_complex_t), NSurface, fp);
+		num += rd(SurfaceHy[ifreq], sizeof(d_complex_t), NSurface, fp);
+		num += rd(SurfaceHz[ifreq], sizeof(d_complex_t), NSurface, fp);
 	}
 
 	size = NN * NFreq2 * sizeof(float);   // 要素は float (以前は sizeof(float *) で 2 倍確保していた)
@@ -126,18 +134,18 @@ void readout(FILE *fp)
 	cHz_i = (float *)malloc(size);
 	for (int ifreq = 0; ifreq < NFreq2; ifreq++) {
 		int64_t n0 = ifreq * NN;
-		num += fread(&cEx_r[n0], sizeof(float), NN, fp);
-		num += fread(&cEx_i[n0], sizeof(float), NN, fp);
-		num += fread(&cEy_r[n0], sizeof(float), NN, fp);
-		num += fread(&cEy_i[n0], sizeof(float), NN, fp);
-		num += fread(&cEz_r[n0], sizeof(float), NN, fp);
-		num += fread(&cEz_i[n0], sizeof(float), NN, fp);
-		num += fread(&cHx_r[n0], sizeof(float), NN, fp);
-		num += fread(&cHx_i[n0], sizeof(float), NN, fp);
-		num += fread(&cHy_r[n0], sizeof(float), NN, fp);
-		num += fread(&cHy_i[n0], sizeof(float), NN, fp);
-		num += fread(&cHz_r[n0], sizeof(float), NN, fp);
-		num += fread(&cHz_i[n0], sizeof(float), NN, fp);
+		num += rd(&cEx_r[n0], sizeof(float), NN, fp);
+		num += rd(&cEx_i[n0], sizeof(float), NN, fp);
+		num += rd(&cEy_r[n0], sizeof(float), NN, fp);
+		num += rd(&cEy_i[n0], sizeof(float), NN, fp);
+		num += rd(&cEz_r[n0], sizeof(float), NN, fp);
+		num += rd(&cEz_i[n0], sizeof(float), NN, fp);
+		num += rd(&cHx_r[n0], sizeof(float), NN, fp);
+		num += rd(&cHx_i[n0], sizeof(float), NN, fp);
+		num += rd(&cHy_r[n0], sizeof(float), NN, fp);
+		num += rd(&cHy_i[n0], sizeof(float), NN, fp);
+		num += rd(&cHz_r[n0], sizeof(float), NN, fp);
+		num += rd(&cHz_i[n0], sizeof(float), NN, fp);
 	}
 
 	size_t num0;

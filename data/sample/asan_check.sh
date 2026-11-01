@@ -1,5 +1,5 @@
 #!/bin/sh
-# asan_check.sh — 全サンプルを AddressSanitizer 付きのソルバー / ofd_post で走らせる (CI 用)
+# asan_check.sh — 全サンプルを AddressSanitizer (+ UBSan) 付きのソルバー / ofd_post で走らせる (CI 用)
 #
 # 配列外読み・解放後使用・リークは、結果がたまたま正しければ "normal end" で
 # 終わるので、スモークテストや検証スクリプトでは見つからない。実際にこの方法で
@@ -16,8 +16,8 @@
 # ASan 付きのビルドの作り方 (出力先を bin/ と分けること。CMakeLists は
 # 実行ファイルを bin/ に置くので、そのままだと通常のバイナリを上書きする):
 #   cmake -B build-asan -DCMAKE_BUILD_TYPE=Debug -DWITH_CUDA=OFF -DWITH_MPI=OFF \
-#     -DCMAKE_C_FLAGS="-fsanitize=address -fno-omit-frame-pointer" \
-#     -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" \
+#     -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer" \
+#     -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
 #     -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build-asan/bin
 #   cmake --build build-asan --target ofd ofd_post ofd_tests
 
@@ -51,9 +51,9 @@ for f in "$SRCDIR"/*.ofd; do
 	mkdir -p "$d/vec" && cp "$d/run.ofd" "$d/vec/"
 	(cd "$d/vec" && "$OFD" -vector -n 1 run.ofd > ../solvec.txt 2>&1) || true
 	for t in sol solvec post posth5; do
-		if grep -q "ERROR: AddressSanitizer\|ERROR: LeakSanitizer" "$d/$t.txt"; then
+		if grep -q "ERROR: AddressSanitizer\|ERROR: LeakSanitizer\|runtime error" "$d/$t.txt"; then
 			echo "*** $b ($t) :"
-			grep -m1 "ERROR:" "$d/$t.txt"
+			grep -m1 "ERROR:\|runtime error" "$d/$t.txt"
 			grep -m3 -E "^ +#[0-9]+ .* in " "$d/$t.txt"
 			status=1
 		fi
@@ -72,7 +72,7 @@ for key in frequency1 frequency2; do
 	(cd "$d" && "$OFD" -n 1 run.ofd > sol.txt 2>&1) || true
 	(cd "$d" && "$POST" -n 1 run.ofd > post.txt 2>&1) || true
 	for t in sol post; do
-		if grep -q "ERROR: AddressSanitizer\|ERROR: LeakSanitizer\|Assertion\|invalid file length" "$d/$t.txt" \
+		if grep -q "ERROR: AddressSanitizer\|ERROR: LeakSanitizer\|runtime error\|Assertion\|invalid file length" "$d/$t.txt" \
 		   || ! grep -q "normal end" "$d/ofd.log" 2>/dev/null; then
 			echo "*** no $key ($t) :"
 			grep -m3 "ERROR:\|Assertion\|invalid" "$d/$t.txt"

@@ -106,13 +106,15 @@ jobs:
 
       # AddressSanitizer : 配列外読み・解放後使用・リークは結果がたまたま正しければ
       # normal end で終わるので、他の検査では見つからない (この方法で境界節点の
-      # 配列外読み・load / ofd_post のリークを見つけている)。出力先を bin/ と
-      # 分けて、上の通常ビルド (アーティファクト) を上書きしない
-      - name: AddressSanitizer — unit tests and all samples (ofd + ofd_post)
+      # 配列外読み・load / ofd_post のリークを見つけている)。UndefinedBehaviorSanitizer
+      # も同じビルドに入れる (符号付き整数の桁あふれ・NULL への fwrite など。
+      # -fno-sanitize-recover で最初の報告で止める)。出力先を bin/ と分けて、
+      # 上の通常ビルド (アーティファクト) を上書きしない
+      - name: AddressSanitizer + UBSan — unit tests and all samples (ofd + ofd_post)
         run: |
           cmake -B build-asan -DCMAKE_BUILD_TYPE=Debug -DWITH_CUDA=OFF -DWITH_MPI=OFF \
-            -DCMAKE_C_FLAGS="-fsanitize=address -fno-omit-frame-pointer" \
-            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
             -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="$RUNNER_TEMP/asan/bin"
           cmake --build build-asan --target ofd ofd_post ofd_tests -j"$(nproc)"
           (cd "$RUNNER_TEMP" && "$RUNNER_TEMP/asan/bin/ofd_tests")
