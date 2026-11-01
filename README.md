@@ -337,6 +337,37 @@ OFD_ARGS="-cpu" sh data/sample/pml_reflection_check.sh /path/to/bin/ofd_cuda /tm
 なお PBC を指定すると PML は Mur-1st に置き換えられます
 (`sol/input_data.c`)。
 
+### 遠方界の利得の検証
+
+ofd_post が出す利得 (`far1d.log` / `far2d.log` の E-abs[dB]) は、給電の入力電力
+`Pin`、正規化係数 `farfactor`、等価面の電磁流、遠方界の積分をつないだ量です。
+どこかの係数が違っても dB の値がずれるだけで正常に終わるので、損失の無い
+半波長ダイポールについて、コードとは独立に決まる量で判定します
+(`data/sample/dipole_gain.ofd` + `data/sample/dipole_gain_check.sh`)。
+
+```sh
+sh data/sample/dipole_gain_check.sh /path/to/bin/ofd /tmp/gain
+
+# MPI / CUDA にも同じスクリプトを掛けられる (ofd_post はソルバーと同じ場所のもの、
+# 別の場所なら OFD_POST で指定)
+OFD_LAUNCHER="mpirun -n 2" OFD_ARGS="-p 1 1 2" \
+  sh data/sample/dipole_gain_check.sh /path/to/bin/ofd_mpi /tmp/gain-mpi
+OFD_ARGS="-cpu" sh data/sample/dipole_gain_check.sh /path/to/bin/ofd_cuda /tmp/gain-cuda
+```
+
+| 判定 | 期待値 | 根拠 | 実測 (2026-11) |
+|---|---|---|---|
+| (1/4π)∮G dΩ | 1 ± 3% | 損失が無いので放射電力 = 受け入れた電力 | 1.0007 |
+| 同 (`matchingloss = 1`) | 1 − \|Γ\|² ± 3% | 分母が給電線からの電力 Pin/(1−\|Γ\|²)。Γ は ofd.log の 3 GHz の反射 | 0.6523 (期待 0.6518) |
+| 正面 (θ = 90°) の利得 | 2.15 dBi ± 0.4 dB | 半波長ダイポールの指向性 1.64 | 2.34 dBi |
+| 軸方向 (θ = 0°) | −20 dB 未満 | 零点 | −240 dB |
+
+積分は far2d.log (θ, φ とも 10° 刻み) の台形則です。領域は dipole.ofd と同じセルで
+±0.15 m に広げています。dipole.ofd の大きさ (先端から 0.5λ で Mur-1st) では
+境界の反射で積分が 0.94 になります。遠方界の係数・入力電力の式に入れた 7 通りの
+誤り (8π→4π、1/2 の欠落、不整合損の無視、Pin の虚部の欠落、電流の半ステップの
+欠落、面素の誤りなど) はすべて NG になります。
+
 ### 二光子吸収 (TPA) 非線形材料
 
 メタマテリアル装荷 Si 導波路の光活性化関数
