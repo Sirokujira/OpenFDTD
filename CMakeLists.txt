@@ -112,9 +112,6 @@ if(WITH_MPI)
     file(GLOB MPI_SOURCES "mpi/*.c")
 else()
     file(GLOB SOURCES "sol/*.c")
-    # setupNear.c は呼び出し元がなく、削除済みグローバル Fnorm を参照する
-    # (CUDA 用の SOURCES2 でも除外済み) — CPU ビルドからも除外する
-    list(REMOVE_ITEM SOURCES "${CMAKE_SOURCE_DIR}/sol/setupNear.c")
 endif()
 
 # HDF5パッケージの検索
@@ -424,8 +421,6 @@ else()
             ${CMAKE_SOURCE_DIR}/sol/setupMurHx.c
             ${CMAKE_SOURCE_DIR}/sol/setupMurHy.c
             ${CMAKE_SOURCE_DIR}/sol/setupMurHz.c
-            # setupNear.c は呼び出し元がなく、削除済みグローバル Fnorm を参照するため
-            # CPU (REMOVE_ITEM) / CUDA (SOURCES2) と同様にここでも除外する
             ${CMAKE_SOURCE_DIR}/sol/setupPml.c
             ${CMAKE_SOURCE_DIR}/sol/setupPmlEx.c
             ${CMAKE_SOURCE_DIR}/sol/setupPmlEy.c

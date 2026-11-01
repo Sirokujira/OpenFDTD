@@ -78,7 +78,6 @@ MPI / CUDA を触ったら該当ビルドも通すこと (下記「4 実装」�
 
 現状の意図的な除外 :
 
-- `sol/setupNear.c` — 呼び出し元がなく削除済みグローバル `Fnorm` を参照。全ビルドから除外。
 - `sol/solve.c` — MPI は `mpi/solve.c`、CUDA は `cuda/solve.cu`、CUDA+MPI は
   `cuda_mpi/solve.cu` と対になっている。
 - `mpi/comm_E.c` — E ハロー交換の CPU 実装。CUDA+MPI では E が device 側にあり得るので

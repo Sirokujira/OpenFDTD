@@ -52,8 +52,6 @@ UM では出ないので、GPU 側を触ったら実機で HDM のまま一度�
 
 ## 現状の意図的な除外
 
-- `sol/setupNear.c` — 呼び出し元がなく、削除済みグローバル `Fnorm` を参照する。
-  CPU (REMOVE_ITEM) でも CUDA (SOURCES2) でも MPI (SOURCES3) でも除外済み。
 - `sol/solve.c` — MPI は `mpi/solve.c`、CUDA は `cuda/solve.cu` と対になっている。
 - `sol/updateTpa.c` — CPU と MPI は対応済み (SOURCES3 に登録)。
   CUDA は `cuda/updateTpa.cu` と対になっている (`CUDA_SOURCES` と
