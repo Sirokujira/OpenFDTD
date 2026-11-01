@@ -138,5 +138,23 @@ void test_ev3dlib(void)
 	/* (c) 分割数 0 は何も描かない */
 	CHECK(run_case(0, nph, 0, q, 1000) == 0);
 
+	/* (d) HTML 版のページ表示 (sol/ev3d.c) : 最後の空ページは数えない。
+	   以前は ev3d_page + 1 を出していて、空ページを足した "1/2" になっていた */
+	{
+		ev3d_init();
+		ev3d_newPage();
+		ev3d_drawLine(0, 0, 0, 1, 1, 1);
+		ev3d_newPage();                         /* 空のまま出力する */
+		ev3d_file(0, "ofd_test_ev3dlib.htm", 0);
+		ev3d_output();
+		FILE *fp = fopen("ofd_test_ev3dlib.htm", "r");
+		int has = 0;
+		char line[4096];
+		while ((fp != NULL) && fgets(line, sizeof(line), fp)) if (strstr(line, "<div id=\"page\">1/1</div>")) has = 1;
+		if (fp != NULL) fclose(fp);
+		remove("ofd_test_ev3dlib.htm");
+		CHECK(has);
+	}
+
 	free(q);
 }

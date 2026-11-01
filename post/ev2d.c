@@ -341,7 +341,9 @@ static void ev2d_end_html(FILE *fp, const char fn[])
 	fprintf(fp, "\n");
 
 	// button
-	fprintf(fp, "<div id=\"page\">%d/%d</div>\n", (ev2d_page > 0 ? 1 : 0), (ev2d_page > 0 ? ev2d_page : 0));
+	// 初期表示は描画時 (plot() の JavaScript) と同じ「データのあるページ数」で出す。
+	// 以前は内部のページ番号 ev2d_page を出していて、3 ページのとき "1/2" になっていた
+	fprintf(fp, "<div id=\"page\">%d/%d</div>\n", (npage > 0 ? 1 : 0), npage);
 	fprintf(fp, "<input type=\"button\" value=\"|<\" onClick=\"first()\">\n");
 	fprintf(fp, "<input type=\"button\" value=\"<\" onClick=\"prev()\">\n");
 	fprintf(fp, "<input type=\"button\" value=\">\" onClick=\"next()\">\n");

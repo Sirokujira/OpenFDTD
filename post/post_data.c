@@ -69,6 +69,7 @@ int post_data(FILE *fp)
 	Near2dScale.db = 0;      // V/m
 	Near2dScale.user = 0;    // auto scale
 	Near2dObj = 1;
+	Near2dContour = 0;       // 以前は初期化しておらず、2 回目の解釈で前の値が残っていた
 	Near2dNoinc = 0;
 	Near2dIzoom = 0;
 

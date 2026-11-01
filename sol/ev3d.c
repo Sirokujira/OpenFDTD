@@ -565,7 +565,9 @@ static void ev3d_end_html(FILE *fp, const char fn[])
 	fprintf(fp, "\n");
 
 	// button
-	fprintf(fp, "<div id=\"page\">%d/%d</div>\n", (ev3d_page >= 0 ? 1 : 0), ev3d_page + 1);
+	// 初期表示は描画時 (JavaScript) と同じ「データのあるページ数」で出す
+	// (以前は ev3d_page + 1 で、最後の空ページも数えていた)
+	fprintf(fp, "<div id=\"page\">%d/%d</div>\n", (npage > 0 ? 1 : 0), npage);
 	fprintf(fp, "<input type=\"button\" value=\"|<\" onClick=\"first()\">\n");
 	fprintf(fp, "<input type=\"button\" value=\"<\" onClick=\"prev()\">\n");
 	fprintf(fp, "<input type=\"button\" value=\">\" onClick=\"next()\">\n");

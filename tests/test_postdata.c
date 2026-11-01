@@ -85,6 +85,7 @@ void test_postdata(void)
 		"plotnear1d = H z 0.03 0.04\r\n"
 		"plotnear2d = Ez X 0.005\r\n"
 		"near2ddim = 0 1\r\n"
+		"near2dcontour = 2\r\n"
 		"near2dnoinc = 1\r\n"
 		"near2dzoom = 0.1 -0.1 0.2 -0.2\r\n"
 		"end\r\n"
@@ -117,7 +118,7 @@ void test_postdata(void)
 	if (NNear2d == 1) {
 		CHECK(!strcmp(Near2d[0].cmp, "Ez") && (Near2d[0].dir == 'X') && (Near2d[0].pos0 == 0.005));
 	}
-	CHECK((Near2dDim[0] == 0) && (Near2dDim[1] == 1) && (Near2dNoinc == 1));
+	CHECK((Near2dDim[0] == 0) && (Near2dDim[1] == 1) && (Near2dNoinc == 1) && (Near2dContour == 2));
 	/* zoom は min/max に並べ替える */
 	CHECK((Near2dIzoom == 1) && (Near2dHzoom[0] == -0.1) && (Near2dHzoom[1] == 0.1));
 	CHECK((Near2dVzoom[0] == -0.2) && (Near2dVzoom[1] == 0.2));
@@ -131,6 +132,7 @@ void test_postdata(void)
 	CHECK((Far1dNorm == 0) && (Far1dScale.user == 0) && (Far1dScale.db == 1));
 	CHECK((Far2dComp[0] == 1) && (Far2dComp[2] == 0) && (Far2dObj == 0.5));
 	CHECK((Near2dDim[0] == 1) && (Near2dDim[1] == 1) && (Near2dNoinc == 0) && (Near2dIzoom == 0));
+	CHECK(Near2dContour == 0);   /* 前の呼び出しの 2 が残らない */
 	reset();
 
 	/* ---- 誤り ---- */

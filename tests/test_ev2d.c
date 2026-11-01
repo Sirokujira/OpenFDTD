@@ -229,14 +229,17 @@ void test_ev2d(void)
 	{
 		FILE *fp = fopen(TMPHTM, "r");
 		CHECK(fp != NULL);
-		int has_npage = 0, nline_items = 0;
+		int has_npage = 0, has_div = 0, nline_items = 0;
 		char line[4096];
 		while ((fp != NULL) && fgets(line, sizeof(line), fp)) {
 			if (strstr(line, "var npage = 3;")) has_npage = 1;
+			/* 初期表示のページ数も 3 (以前は内部のページ番号で "1/2" だった) */
+			if (strstr(line, "<div id=\"page\">1/3</div>")) has_div = 1;
 			if (!strncmp(line, "[2,", 3)) nline_items++;
 		}
 		if (fp != NULL) fclose(fp);
 		CHECK(has_npage);
+		CHECK(has_div);
 		CHECK(nline_items == (3 + 4) + (8 + 3 + 2) + nbig);
 	}
 	remove(TMPEV2);

@@ -176,6 +176,11 @@ void test_plot3d(void)
 		size_t n = fread(line, 1, sizeof(line) - 1, fp);
 		line[n] = '\0';
 		CHECK(strstr(line, "<") != NULL);
+		/* ページ表示はデータのあるページ数 (1 ページ) */
+		int has_div = 0;
+		rewind(fp);
+		while (fgets(line, sizeof(line), fp)) if (strstr(line, "<div id=\"page\">1/1</div>")) has_div = 1;
+		CHECK(has_div);
 		fclose(fp);
 	}
 	remove("geom.ev3");
