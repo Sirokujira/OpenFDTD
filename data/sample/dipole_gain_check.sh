@@ -6,6 +6,8 @@
 #   1. (1/4π)∮G dΩ = 1             (損失が無いので放射電力 = 受け入れた電力)  ±3%
 #   2. matchingloss = 1 では 1-|Γ|^2 (Γ は ofd.log の 3 GHz の反射)          ±3%
 #   3. 正面 (θ = 90) の利得 2.15 dBi ± 0.4 dB、軸方向 (θ = 0) は -20 dB 未満
+#   4. far0d.log (θ = 90, φ = 0) が far1d の正面と同じ (±0.01 dB)、
+#      直線偏波なので RHCP = LHCP = E-abs - 3.0103 dB (±0.01 dB)
 #
 # 使い方 : dipole_gain_check.sh <ソルバー(絶対パス)> [作業ディレクトリ]
 #
@@ -73,7 +75,12 @@ REF=$(awk '/Rin\[ohm\]/ { t = 1; next } t && ($1 + 0 == 3e9) { print $6; exit }'
 G90=$(awk 'NR > 2 && NF > 3 && ($2 + 0 == 90) { print $3; exit }' "$WORK/g0/far1d.log")
 G0=$(awk 'NR > 2 && NF > 3 && ($2 + 0 == 0) { print $3; exit }' "$WORK/g0/far1d.log")
 
-awk -v i0="$I0" -v i1="$I1" -v ref="$REF" -v g90="$G90" -v g0="$G0" 'BEGIN {
+# far0d.log : 2 行のヘッダの後に  No. freq E-abs E-theta E-theta[deg] E-phi E-phi[deg] E-major E-minor E-RHCP E-LHCP AR
+[ -s "$WORK/g0/far0d.log" ] || { echo "*** far0d.log not written" >&2; exit 1; }
+F0=$(awk 'NR == 3 { print $3, $10, $11 }' "$WORK/g0/far0d.log")
+
+awk -v i0="$I0" -v i1="$I1" -v ref="$REF" -v g90="$G90" -v g0="$G0" -v f0="$F0" 'BEGIN {
+	split(f0, a, " "); fabs0 = a[1]; frh = a[2]; flh = a[3]
 	status = 0
 	t1 = 1 - exp(ref / 10 * log(10))
 	ok = ((i0 > 0.97) && (i0 < 1.03))
@@ -85,6 +92,13 @@ awk -v i0="$I0" -v i1="$I1" -v ref="$REF" -v g90="$G90" -v g0="$G0" 'BEGIN {
 	printf "broadside gain            = %.3f dBi (expected 2.15)        -> %s\n", g90, ok ? "OK" : "NG"; if (!ok) status = 1
 	ok = (g0 < -20)
 	printf "axial (theta = 0)         = %.1f dBi (expected null)       -> %s\n", g0, ok ? "OK" : "NG"; if (!ok) status = 1
+	d = fabs0 - g90; if (d < 0) d = -d
+	ok = (d < 0.01) && (f0 != "")
+	printf "far0d (90,0) vs far1d     = %.4f / %.4f dBi                -> %s\n", fabs0, g90, ok ? "OK" : "NG"; if (!ok) status = 1
+	d1 = frh - (fabs0 - 3.0103); if (d1 < 0) d1 = -d1
+	d2 = flh - (fabs0 - 3.0103); if (d2 < 0) d2 = -d2
+	ok = (d1 < 0.01) && (d2 < 0.01)
+	printf "far0d RHCP / LHCP         = %.4f / %.4f dB (E-abs - 3.01)  -> %s\n", frh, flh, ok ? "OK" : "NG"; if (!ok) status = 1
 	if (status) print "*** dipole gain check FAILED"; else print "dipole gain check passed"
 	exit status
 }'

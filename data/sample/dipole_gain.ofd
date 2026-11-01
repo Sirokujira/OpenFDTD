@@ -29,6 +29,12 @@ title = half-wave dipole : gain and radiated power
 #    理想的な正弦波からずれ、ギャップも 1 セルあるので 2026-11 の実測は
 #    2.34 dBi。許容 ±0.4 dB。軸方向 (θ = 0) は零点 (-20 dB 未満)。
 #
+# 4. 1 方向の遠方界 (far0d.log、post/outputFar0d.c) : θ = 90, φ = 0
+#    z 軸まわりに対称なので、far1d の X 面 (φ = 90) の θ = 90 と同じ利得 (±0.01 dB)。
+#    直線偏波は右旋・左旋の円偏波に半分ずつ分かれるので
+#      E-RHCP = E-LHCP = E-abs - 10 log10(2) = E-abs - 3.0103 dB  (±0.01 dB)
+#    (2026-11 の実測 2.3362 / -0.6741 / -0.6741)
+#
 # 領域: 3 GHz で λ = 0.1 m。dipole.ofd と同じセル (0.005 m) で領域を
 # ±0.15 m (ダイポールの先端から 1.25λ) に広げている。dipole.ofd の
 # ±0.075 m (先端から 0.5λ、Mur-1st が近い) では積分が 0.94 になり、
@@ -45,4 +51,5 @@ plotfar1d = X 72
 far1ddb = 1
 plotfar2d = 18 36
 far2ddb = 1
+plotfar0d = 90 0 1
 end

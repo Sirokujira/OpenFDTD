@@ -361,6 +361,8 @@ OFD_ARGS="-cpu" sh data/sample/dipole_gain_check.sh /path/to/bin/ofd_cuda /tmp/g
 | 同 (`matchingloss = 1`) | 1 − \|Γ\|² ± 3% | 分母が給電線からの電力 Pin/(1−\|Γ\|²)。Γ は ofd.log の 3 GHz の反射 | 0.6523 (期待 0.6518) |
 | 正面 (θ = 90°) の利得 | 2.15 dBi ± 0.4 dB | 半波長ダイポールの指向性 1.64 | 2.34 dBi |
 | 軸方向 (θ = 0°) | −20 dB 未満 | 零点 | −240 dB |
+| far0d.log の正面 (θ = 90°, φ = 0°) | far1d と同じ ±0.01 dB | z 軸まわりの対称性 | 2.3362 / 2.3362 |
+| far0d.log の RHCP / LHCP | E-abs − 3.0103 dB ±0.01 | 直線偏波は両円偏波に半分ずつ | −0.6741 / −0.6741 |
 
 積分は far2d.log (θ, φ とも 10° 刻み) の台形則です。領域は dipole.ofd と同じセルで
 ±0.15 m に広げています。dipole.ofd の大きさ (先端から 0.5λ で Mur-1st) では

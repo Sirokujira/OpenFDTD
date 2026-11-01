@@ -101,3 +101,21 @@ ID 配列一式をテスト内で構築する。`tests/test_setupid.c` の
 - `finc` の `dfi` は `fi` の中心差分と比較する
 - `vfeed` のピークは正規化の定義から `t = tw + td + (tw/4)/√2` で 1
 - `calcdft` は線形性と、周波数 0 で総和になることで検証する
+
+## ソースと検証の対応 (全ファイル)
+
+リポジトリの全ソースが、次のどれかで検証されている。ユニットテストに
+つながっているファイルは CMakeLists.txt の `TEST_TARGET_SOURCES` が正本
+(sol/ の全 65 ファイルと post/ の 11 ファイル)。
+
+| ソース | 検証 |
+|---|---|
+| `sol/*.c` (全 65 ファイル) | ユニットテスト (上の表)。時間ループ `solve.c` も `solve` スイート。物理は検証スクリプト (TPA・Mie・PML・熱・利得・定在波) が解析解と比べる |
+| `post/` の計算・入出力 (`calcFar1d/2d`, `calcNear1d/2d`, `planewave`, `post_data`, `readout`, `readhdf5`, `ev2d`, `ev2dlib`, `ev3dlib`) | ユニットテスト (`post` / `postdata` / `outfile` / `readhdf5` / `ev2d` / `ev3dlib`) |
+| `post/outputFar0d.c`, `outputFar1d.c`, `outputFar2d.c` | `dipole_gain_check.sh` が far0d/far1d/far2d.log の値を解析解と比べる (∮G = 4π、2.15 dBi、軸の零点、直線偏波の RHCP = LHCP = E − 3.01 dB) |
+| `post/outputNear1d.c`, `outputNear2d.c` | `pec_plate_check.sh` が near1d/near2d.log を定在波 2\|sin kz\| と比べる |
+| `post/plot2d*.c`, `plot3d*.c`, `post.c` (作図と振り分け) | 作図部品は `ev2d` / `ev3dlib`、全サンプルの ofd_post を ASan (`asan_check.sh`)、ofd.out と HDF5 の両経路で出力 (ev.ev2 / ev.ev3) がバイト単位で一致 (`hdf5_post_check.sh`) |
+| `mpi/*.c`, `src/mpi_Main.c` | CI build-mpi : dipole の 1/2 プロセス一致、分割の向きを変えた TPA の一致、TCP 経路、分割数過多のエラー、全検証スクリプトを 2 プロセスで |
+| `cuda/*.cu`, `cuda_mpi/*.cu`, `src/cuda*_Main.cu` | CI build-cuda : `-cpu` 実行で TPA・HDF5 構成・PML・vector・利得・定在波・HDF5 からの後処理 (CUDA+MPI は 2 プロセス)。実機 GPU は 2026-08-21 に確認 (CLAUDE.md。GPU 側を触ったら HDM で一度走らせる) |
+| `src/sol_Main.c`, `src/post_Main.c` | 全検証スクリプトが ofd / ofd_post として起動する。`-h5` は `hdf5_post_check.sh` |
+| `tools/h5check.c` | `pml_reflection_check.sh` / `hdf5_layout_check.sh` が 3 OS で使う |
