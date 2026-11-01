@@ -10,6 +10,12 @@ void writeout(FILE *fp)
 {
 	size_t num = 0;
 
+	// NGline / NSurface は int64_t だが、ofd.out では従来どおり 4 バイト (int) で
+	// 持つ (読み手 post/readout.c と OpenFDTD-X の互換のため)。以前は int64_t の
+	// 変数を sizeof(int) で直接書いていて、リトルエンディアンでたまたま動いていた
+	const int ngline   = (int)NGline;
+	const int nsurface = (int)NSurface;
+
 	num += fwrite(Title,           sizeof(char),        256,                           fp);
 	num += fwrite(&Nx,             sizeof(int),         1,                             fp);
 	num += fwrite(&Ny,             sizeof(int),         1,                             fp);
@@ -28,7 +34,7 @@ void writeout(FILE *fp)
 	num += fwrite(&Solver.maxiter, sizeof(int),         1,                             fp);
 	num += fwrite(&Solver.nout,    sizeof(int),         1,                             fp);
 	num += fwrite(&Dt,             sizeof(double),      1,                             fp);
-	num += fwrite(&NGline,         sizeof(int),         1,                             fp);
+	num += fwrite(&ngline,         sizeof(int),         1,                             fp);
 	num += fwrite(&IPlanewave,     sizeof(int),         1,                             fp);
 	num += fwrite(&Planewave,      sizeof(planewave_t), 1,                             fp);
 
@@ -53,7 +59,7 @@ void writeout(FILE *fp)
 	num += fwrite(Spara,           sizeof(d_complex_t), NPoint * NFreq1,               fp);
 	num += fwrite(Gline,           sizeof(double),      NGline * 2 * 3,                fp);
 
-	num += fwrite(&NSurface,       sizeof(int),         1,        fp);
+	num += fwrite(&nsurface,       sizeof(int),         1,        fp);
 	num += fwrite(Surface,         sizeof(surface_t),   NSurface, fp);
 	for (int ifreq = 0; ifreq < NFreq2; ifreq++) {
 		num += fwrite(SurfaceEx[ifreq], sizeof(d_complex_t), NSurface, fp);

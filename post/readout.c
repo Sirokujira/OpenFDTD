@@ -10,6 +10,10 @@ void readout(FILE *fp)
 {
 	size_t num = 0;
 	size_t size;
+	// NGline / NSurface は ofd.out では 4 バイト (int)。int64_t の変数へ
+	// sizeof(int) で直接読むと上位 4 バイトが前の値のまま残るので、int で
+	// 受けてから代入する (sol/writeout.c と対)
+	int ngline = 0, nsurface = 0;
 
 	num += fread(Title,           sizeof(char),        256, fp);
 	num += fread(&Nx,             sizeof(int),         1,   fp);
@@ -29,7 +33,8 @@ void readout(FILE *fp)
 	num += fread(&Solver.maxiter, sizeof(int),         1,   fp);
 	num += fread(&Solver.nout,    sizeof(int),         1,   fp);
 	num += fread(&Dt,             sizeof(double),      1,   fp);
-	num += fread(&NGline,         sizeof(int),         1,   fp);
+	num += fread(&ngline,         sizeof(int),         1,   fp);
+	NGline = ngline;
 	num += fread(&IPlanewave,     sizeof(int),         1,   fp);
 	num += fread(&Planewave,      sizeof(planewave_t), 1,   fp);
 
@@ -75,7 +80,8 @@ void readout(FILE *fp)
 	num += fread(Spara,  sizeof(d_complex_t), NPoint * NFreq1,               fp);
 	num += fread(Gline,  sizeof(double),      NGline * 2 * 3,                fp);
 
-	num += fread(&NSurface, sizeof(int),         1,        fp);
+	num += fread(&nsurface, sizeof(int),         1,        fp);
+	NSurface = nsurface;
 
 	size = NSurface * sizeof(surface_t);
 	Surface = (surface_t *)malloc(size);
@@ -105,7 +111,7 @@ void readout(FILE *fp)
 		num += fread(SurfaceHz[ifreq], sizeof(d_complex_t), NSurface, fp);
 	}
 
-	size = NN * NFreq2 * sizeof(float *);
+	size = NN * NFreq2 * sizeof(float);   // 要素は float (以前は sizeof(float *) で 2 倍確保していた)
 	cEx_r = (float *)malloc(size);
 	cEx_i = (float *)malloc(size);
 	cEy_r = (float *)malloc(size);
