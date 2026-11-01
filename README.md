@@ -473,6 +473,8 @@ OFD_ARGS="-cpu" sh data/sample/tpa_slab_check.sh /path/to/bin/ofd_cuda /tmp/tpa-
 
 # 領域分割の取り方によらず結果が一致することの検証 (MPI 版)
 sh data/sample/tpa_decomp_check.sh /path/to/bin/ofd_mpi /tmp/tpa-decomp
+# 同じく 3 次元に広がる場で (TPA 層を x / y とも半分にした tpa_half を含む 7 サンプル)
+sh data/sample/decomp_check.sh /path/to/bin/ofd_mpi /tmp/decomp
 ```
 
 #### 実装ごとの対応状況
@@ -489,6 +491,14 @@ MPI 版では `updateTpa` が `|E|²` の colocated 近似のために隣接セ�
 この FDTD の領域分割では E 更新が読むのは H の近傍だけなので、既存の
 `comm_X/Y/Z` は H 面しか交換していませんでした — TPA が E ハローを必要とする
 最初の処理です。
+
+`updateTpa` は Ex → Ey → Ez の順に減衰し、後の成分は減衰後の前の成分を読むので、
+MPI 版は成分の間で交換します (Ey/Ez の交換 → Ex を減衰 → Ex の交換 → Ey を減衰 →
+Ey の交換 → Ez を減衰)。以前は 3 成分を先にまとめて交換していて、領域境界の隣接値
+だけが減衰前になっていました。上の平板は x / y に一様で Ex しか無いので結果は
+一致していましたが、TPA 層を x の半分だけにすると x 分割で透過率が 6 桁目でずれて
+いました (0.575055 → 0.575053)。`data/sample/decomp_check.sh` の `tpa_half`
+(TPA 層を x / y とも半分にした柱。Ey / Ez も立つ) がこの場合を検証します。
 
 検証結果 (`data/sample/tpa_slab.ofd`、透過率は CPU 版と完全一致):
 

@@ -12,8 +12,8 @@
 #
 # 2026-11 に 1 / 8 スレッドの ofd.out をバイト単位で比べ、違いは収束履歴
 # (平均値 Eiter / Hiter) の区間だけだった。平均値は OpenMP の reduction で
-# 足し合わせるので順序が変わり、最後の桁が揺らぐ (競合ではない)。ログには
-# 小数 6 桁で出るので、その揺らぎはここでは見えない。
+# 足し合わせるので順序が変わり、最後の桁が揺らぐ (競合ではない)。ログの収束
+# 履歴は値が大きいと 15 桁近く出て揺らぎが見えうるので、有効 10 桁で比べる。
 #
 # サンプル : dipole (給電) / sphere (平面波) / debye (分散性材料) /
 #   pml_reflection (PML) / tpa_slab (TPA) / dipole_couple (観測点) /
@@ -54,7 +54,9 @@ fi
 # ofd.log からスレッド数・日時・所要時間の行を除く
 filter_log() {
 	grep -v -E -e 'thread=' -e '^  part-' -e '^  total ' \
-	        -e '^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) ' "$1"
+	        -e '^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) ' "$1" |
+	awk 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9.e+-]+$/ && $3 ~ /^[0-9.e+-]+$/ {
+		printf "%s %.10g %.10g\n", $1, $2, $3; next } { print }'
 }
 
 status=0

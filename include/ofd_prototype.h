@@ -173,6 +173,7 @@ extern void        updateHy(double);
 extern void        updateHz(double);
 extern void        setupTpa(void);
 extern void        updateTpa(double);
+extern void        updateTpaComp(int, double);
 extern void        dispersionEx(double);
 extern void        dispersionEy(double);
 extern void        dispersionEz(double);

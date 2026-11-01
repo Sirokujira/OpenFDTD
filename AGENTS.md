@@ -31,6 +31,7 @@ sh data/sample/dipole_gain_check.sh      "$PWD/bin/ofd" /tmp/gain-check    # 遠
 sh data/sample/pec_plate_check.sh        "$PWD/bin/ofd" /tmp/pec-check     # 平面波の全電界 (定在波 2|sin kz|)
 sh data/sample/hdf5_post_check.sh        "$PWD/bin/ofd" /tmp/h5post-check  # ofd_post -h5 が ofd.out と同じ出力
 sh data/sample/thread_check.sh          "$PWD/bin/ofd" /tmp/thread-check  # -n 1 と -n 4 でログが一致 (OpenMP の競合)
+sh data/sample/decomp_check.sh          "$PWD/bin/ofd_mpi" /tmp/decomp-check  # MPI の分割 (x/y/z/2x2x2) で 1 プロセスと一致
 # メモリ安全 (全サンプル × ofd + ofd_post を ASan で。ビルド方法はスクリプト冒頭)
 sh data/sample/asan_check.sh <asan の ofd> <asan の ofd_post> /tmp/asan-check
 ```
@@ -100,6 +101,10 @@ MPI / CUDA を触ったら該当ビルドも通すこと (下記「4 実装」�
   呼ぶ必要がある。現在は**直列ドライバで rank 0 だけが開く**形にしてある
   (書かれるのはすべて rank 0 の値なので並列ドライバを使う理由が無い)。
   → **MPI / CUDA+MPI ビルドに並列 HDF5 は不要**。
+- **TPA は成分の間で E を交換する** (`mpi/solve.c` / `cuda_mpi/solve.cu`)。`updateTpa`
+  は Ex → Ey → Ez の順に減衰し、後の成分は減衰後の前の成分を読む。3 成分を先に
+  まとめて交換していたため境界の隣接値だけ減衰前になり、x に一様でない場で結果が
+  分割に依存していた (`decomp_check.sh` の tpa_half で検出、`updateTpaComp` で修正)。
 - `comm_X/Y/Z` は **H 面しか交換していない**。E の近傍を読む処理を追加する場合は
   `mpi/comm_E.c` の `comm_E_X/Y/Z()` (CUDA+MPI では `cuda_mpi/comm_cuda_E.cu` の
   `comm_cuda_E_X/Y/Z()`) を先に呼ぶこと。
@@ -111,7 +116,8 @@ MPI の検証 :
 ```bash
 cmake -B build-mpi -DCMAKE_BUILD_TYPE=Release -DWITH_CUDA=OFF -DWITH_MPI=ON
 cmake --build build-mpi -j"$(nproc)"
-sh data/sample/tpa_decomp_check.sh "$PWD/bin/ofd_mpi" /tmp/mpi-decomp   # 領域分割不変性
+sh data/sample/tpa_decomp_check.sh "$PWD/bin/ofd_mpi" /tmp/mpi-decomp   # 領域分割不変性 (TPA 平板)
+sh data/sample/decomp_check.sh     "$PWD/bin/ofd_mpi" /tmp/mpi-decomp3d # 同 (3 次元の場 7 サンプル)
 OFD_LAUNCHER="mpirun --oversubscribe -n 2" OFD_ARGS="-p 1 1 2" \
   sh data/sample/tpa_slab_check.sh "$PWD/bin/ofd_mpi" /tmp/mpi-tpa       # 解析解
 ```

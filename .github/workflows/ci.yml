@@ -471,6 +471,12 @@ jobs:
       - name: Validation test — TPA decomposition invariance
         run: sh data/sample/tpa_decomp_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-decomp
 
+      # 3 次元に広がる場 (給電・平面波・PML・観測点・負荷・周期境界・x に一様でない TPA)
+      # でも分割によらずログと後処理の出力が 1 プロセスと一致すること。TPA の平板は
+      # x / y に一様なので x / y 分割のハロー交換の誤りを見逃す (data/sample/decomp_check.sh)
+      - name: Validation test — decomposition invariance (3D fields)
+        run: sh data/sample/decomp_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-decomp3d
+
       # ノード間 (PC 跨ぎ) MPI 相当の経路 : --mca btl tcp,self で共有メモリ転送を
       # 無効化し、物理的に別ノードへ送るときと同じ経路を単一ランナーで通す。
       # スナップショットの集約 (comm_snapshot) は毎出力ステップで全ランクから
@@ -654,6 +660,11 @@ jobs:
 
       - name: Validation test — TPA decomposition invariance (ofd_cuda_mpi)
         run: sh data/sample/tpa_decomp_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-decomp -cpu
+
+      - name: Validation test — decomposition invariance, 3D fields (ofd_cuda_mpi)
+        env:
+          OFD_ARGS: -cpu
+        run: sh data/sample/decomp_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-decomp3d
 
       - name: Validation test — MPI network path (ofd_cuda_mpi, tcp btl)
         run: sh data/sample/mpi_network_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-network -cpu

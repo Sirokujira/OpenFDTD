@@ -31,6 +31,7 @@ sh data/sample/dipole_gain_check.sh      bin/ofd /tmp/gain-check     # 遠方界
 sh data/sample/pec_plate_check.sh        bin/ofd /tmp/pec-check      # 平面波の全電界 (定在波 2|sin kz|)
 sh data/sample/hdf5_post_check.sh        bin/ofd /tmp/h5post-check   # ofd_post -h5 が ofd.out と同じ出力
 sh data/sample/thread_check.sh          "$PWD/bin/ofd" /tmp/thread-check  # -n 1 と -n 4 でログが一致 (OpenMP の競合)
+sh data/sample/decomp_check.sh          "$PWD/bin/ofd_mpi" /tmp/decomp-check  # MPI の分割 (x/y/z/2x2x2) で 1 プロセスと一致
 # メモリ安全 (全サンプル × ofd + ofd_post を ASan で。ビルド方法はスクリプト冒頭)
 sh data/sample/asan_check.sh <asan の ofd> <asan の ofd_post> /tmp/asan-check
 ```

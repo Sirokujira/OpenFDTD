@@ -209,14 +209,18 @@ void solve(int io, double *tdft, FILE *fp)
         }
 
         // TPA (二光子吸収) 非線形減衰 (cuda/updateTpa.cu)
-        // 領域境界の E ハローを先に交換する : updateTpa は |E|^2 の colocated
-        // 近似のため隣接セルの E 成分を読む (E 更新自体は H しか読まないので
-        // 既存の comm_cuda_X/Y/Z(0) は H しか交換していない)
+        // updateTpa は |E|^2 の colocated 近似のため隣接セルの E 成分を読む
+        // (E 更新自体は H しか読まないので、既存の comm_cuda_X/Y/Z(0) は H しか
+        // 交換していない)。成分は Ex → Ey → Ez の順に減衰し、後の成分は減衰後の
+        // 前の成分を読むので、成分の間で交換する (順序と理由は mpi/solve.c)
         if (NTpa) {
-            if (Npx > 1) comm_cuda_E_X();
             if (Npy > 1) comm_cuda_E_Y();
             if (Npz > 1) comm_cuda_E_Z();
-            updateTpa(t);
+            updateTpaComp(0, t);
+            if (Npx > 1) comm_cuda_E_X();
+            updateTpaComp(1, t);
+            if (Npy > 1) comm_cuda_E_Y();
+            updateTpaComp(2, t);
         }
 
         // TPA 検証用 : 最終 1 周期の全電界振幅を測定 (point を含むプロセスのみ)
