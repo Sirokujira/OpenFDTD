@@ -116,7 +116,7 @@ ID 配列一式をテスト内で構築する。`tests/test_setupid.c` の
 | `post/outputNear1d.c`, `outputNear2d.c` | `pec_plate_check.sh` が near1d/near2d.log を定在波 2\|sin kz\| と比べる |
 | `post/plot2d*.c`, `plot3d*.c`, `post.c` (作図と振り分け) | 作図部品は `ev2d` / `ev3dlib`、全サンプルの ofd_post を ASan (`asan_check.sh`)、ofd.out と HDF5 の両経路で出力 (ev.ev2 / ev.ev3) がバイト単位で一致 (`hdf5_post_check.sh`) |
 | OpenMP 並列 (`sol/` の `#pragma omp`) | `thread_check.sh` が 8 通りのサンプルで `-n 1` と `-n 4` のログ・後処理出力の一致を見る。CPU 3 OS と MPI 2 プロセスで実行。`average.c` の reduction を外す変異で検出を確認。CUDA は `-n` が無く `-cpu` の更新ループも直列なので対象外 |
-| `mpi/*.c`, `src/mpi_Main.c` | CI build-mpi : 7 サンプル (給電・平面波・PML・観測点・負荷・周期境界・x に一様でない TPA) で x / y / z / 2×2×2 分割のログと後処理出力が 1 プロセスと一致 (`decomp_check.sh`)、dipole の 1/2 プロセス一致、分割の向きを変えた TPA の一致、TCP 経路、分割数過多のエラー、全検証スクリプトを 2 プロセスで |
+| `mpi/*.c`, `src/mpi_Main.c` | CI build-mpi : 8 サンプル (給電・平面波・PML・観測点・負荷・周期境界 x/y と y/z・x / y に一様でない TPA) で x / y / z / 2×2×2 分割のログと後処理出力が 1 プロセスと一致 (`decomp_check.sh`)、dipole の 1/2 プロセス一致、分割の向きを変えた TPA の一致、TCP 経路、分割数過多のエラー、全検証スクリプトを 2 プロセスで |
 | `cuda/*.cu`, `cuda_mpi/*.cu`, `src/cuda*_Main.cu` | CI build-cuda : `-cpu` 実行で TPA・HDF5 構成・PML・vector・利得・定在波・HDF5 からの後処理 (CUDA+MPI は 2 プロセス)。実機 GPU は 2026-08-21 に確認 (CLAUDE.md。GPU 側を触ったら HDM で一度走らせる) |
 | `src/sol_Main.c`, `src/post_Main.c` | 全検証スクリプトが ofd / ofd_post として起動する。`-h5` は `hdf5_post_check.sh` |
 | `tools/h5check.c` | `pml_reflection_check.sh` / `hdf5_layout_check.sh` が 3 OS で使う |

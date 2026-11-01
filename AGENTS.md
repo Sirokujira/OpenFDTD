@@ -117,7 +117,7 @@ MPI の検証 :
 cmake -B build-mpi -DCMAKE_BUILD_TYPE=Release -DWITH_CUDA=OFF -DWITH_MPI=ON
 cmake --build build-mpi -j"$(nproc)"
 sh data/sample/tpa_decomp_check.sh "$PWD/bin/ofd_mpi" /tmp/mpi-decomp   # 領域分割不変性 (TPA 平板)
-sh data/sample/decomp_check.sh     "$PWD/bin/ofd_mpi" /tmp/mpi-decomp3d # 同 (3 次元の場 7 サンプル)
+sh data/sample/decomp_check.sh     "$PWD/bin/ofd_mpi" /tmp/mpi-decomp3d # 同 (3 次元の場 8 サンプル)
 OFD_LAUNCHER="mpirun --oversubscribe -n 2" OFD_ARGS="-p 1 1 2" \
   sh data/sample/tpa_slab_check.sh "$PWD/bin/ofd_mpi" /tmp/mpi-tpa       # 解析解
 ```

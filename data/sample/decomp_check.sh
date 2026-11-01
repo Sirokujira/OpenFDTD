@@ -17,7 +17,9 @@
 # 完全一致を求める (平均値の Allreduce を壊すと桁違いにずれるので検出できる)。
 #
 # サンプル : dipole (給電・Mur) / sphere (平面波) / dipole_couple (PML・観測点) /
-#   loop_load (負荷) / pbc (周期境界 x, y) / pml_reflection (PML・観測点 4 つ) /
+#   loop_load (負荷) / pbc (周期境界 x, y) / pbc_yz (pbc を回して周期境界 y, z。
+#   平面波は x 方向に進む。z 分割の周期境界の交換 comm_Z(1) を通る) /
+#   pml_reflection (PML・観測点 4 つ) /
 #   tpa_half (tpa_slab の TPA 層を x / y とも半分 (1/4 の柱) にしたもの。場が x / y に
 #   一様でなくなり Ey / Ez も立つので、TPA だけが使う E のハロー交換 mpi/comm_E.c と
 #   成分の間の交換の順序 (mpi/solve.c) を通る。x だけ半分では Ey が対称性で 0 になり、
@@ -91,7 +93,7 @@ conv_same() {
 }
 
 status=0
-for b in dipole sphere dipole_couple loop_load pbc pml_reflection tpa_half; do
+for b in dipole sphere dipole_couple loop_load pbc pbc_yz pml_reflection tpa_half; do
 	ref=""
 	OLDIFS=$IFS
 	IFS=';'
@@ -105,6 +107,10 @@ for b in dipole sphere dipole_couple loop_load pbc pml_reflection tpa_half; do
 		if [ "$b" = "tpa_half" ]; then
 			sed 's/^geometry = 3 1 0 0\.4e-6 0 0\.4e-6 /geometry = 3 1 0 0.2e-6 0 0.2e-6 /' "$SRCDIR/tpa_slab.ofd" > "$d/run.ofd"
 			grep -q '^geometry = 3 1 0 0\.2e-6 0 0\.2e-6 ' "$d/run.ofd" || { echo "*** tpa_half : tpa_slab.ofd の TPA 層の行が見つからない" >&2; exit 1; }
+		elif [ "$b" = "pbc_yz" ]; then
+			sed -e 's/^planewave = 0 0 1/planewave = 90 0 1/' -e 's/^pbc = 1 1 0/pbc = 0 1 1/' "$SRCDIR/pbc.ofd" > "$d/run.ofd"
+			grep -q '^pbc = 0 1 1' "$d/run.ofd" && grep -q '^planewave = 90 0 1' "$d/run.ofd" ||
+				{ echo "*** pbc_yz : pbc.ofd の planewave / pbc の行が見つからない" >&2; exit 1; }
 		else
 			cp "$SRCDIR/$b.ofd" "$d/run.ofd"
 		fi
