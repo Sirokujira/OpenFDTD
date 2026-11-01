@@ -62,6 +62,7 @@ ctest --test-dir build --output-on-failure   # 全件
 | `hdf5` | `sol/outputHdf5.c` | time_series_data.h5 の**値** (構成は `hdf5_layout_check.sh`)。一意な値を入れた場・近傍界 DFT・損失を書いて HDF5 API で読み戻し、(i,j,k,成分[,実部/虚部]) への詰め替えと余白を含まないこと、time_H = time − Dt/2、interval の間引き、収束履歴の iter = n·nout、metadata・Title、hdf5 = 0 で何も作らないこと |
 | `post` | `post/calcFar1d.c`, `post/calcFar2d.c`, `post/calcNear1d.c`, `post/calcNear2d.c`, `post/planewave.c` | ofd_post の計算。遠方界は x 方向微小電流の放射電力 1 − (sinθ cosφ)² で各面 (X/Y/Z/V/H) の角度の約束・far1dnorm・far2d の格子を確かめる。近傍界は線 (X:(y,z), Y:(z,x), Z:(x,y)) と面の (i,j,k) の割り当てと並び。平面波の入射界は中心で Ei、進行方向 λ/4 で −j 倍、垂直方向で位相不変 |
 | `postdata` | `post/post_data.c` | ofd_post の入力の解釈。ソルバーや未知のキーを無視、`#` と空行、`end` 以降を読まない、LF / CRLF、plotfar1d (X/Y/Z と V/H の固定角)・plotnear1d/2d・plotzin 等の自動/指定スケール・near2dzoom の並べ替え、既定値が前回の値を残さないこと、誤り 10 通りで 1 を返すこと |
+| `readhdf5` | `post/readhdf5.c` | HDF5 移行用の読み手 (既定では呼ばれない) と書き手 `sol/outputHdf5.c` の往復。格子の大きさ・配列レイアウト (int64)・Dt・平面波・格子座標・収束履歴・給電の時系列・周波数・形状の線分と材料 id・等価面・Title が書いた値のまま戻ること |
 | `farfield` | `sol/farfield.c`, `sol/nearfield_c.c` | 微小ダイポールの放射パターン (電気/磁気/Huygens)、等価電磁流 `n̂×H` / `-n̂×E` の 6 成分すべて、位相因子 `exp(+jk r̂·r')` の符号、偏波分解 (直線/円/楕円と `\|E\|²=長軸²+短軸²=RHCP²+LHCP²`)、節点補間が一次関数を厳密に再現すること、面の幾何 (法線・位置・面素・PBC)、正規化係数 `farfactor` 。frequency2 の無い入力 (NFreq2 = 0) でも面の幾何が作れること |
 
 ## テストを足すとき

@@ -50,8 +50,17 @@ void readhdf5() {
     hid_t metadata_group_id = H5Gopen(file_id, "/metadata", H5P_DEFAULT);
 
     // Titleの読み込み
+    // 書き手 (sol/outputHdf5.c) は sizeof(Title) の固定長文字列で書く。
+    // メモリ側も同じ長さの文字列型で読む (以前は H5T_NATIVE_CHAR で読んでいて、
+    // 文字列型から整数型への変換は無いので H5Dread が失敗し Title が空のままだった)
     hid_t dataset_id = H5Dopen(metadata_group_id, "Title", H5P_DEFAULT);
-    status = H5Dread(dataset_id, H5T_NATIVE_CHAR, H5S_ALL, H5S_ALL, H5P_DEFAULT, Title);
+    {
+        hid_t strtype = H5Tcopy(H5T_C_S1);
+        H5Tset_size(strtype, sizeof(Title));
+        status = H5Dread(dataset_id, strtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, Title);
+        H5Tclose(strtype);
+        Title[sizeof(Title) - 1] = '\0';
+    }
     H5Dclose(dataset_id);
 
     // 各種整数型メタデータの読み込み
@@ -381,6 +390,8 @@ void readhdf5() {
     fprintf(stdout, "input_impedance_data (end)\n");
     H5Dclose(dataset_id);
     H5Tclose(memtype_id);
+
+    free(input_impedance_data);
 
     // メタデータグループのクローズ
     H5Gclose(metadata_group_id);
