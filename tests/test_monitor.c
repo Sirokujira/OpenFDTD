@@ -1,7 +1,7 @@
 /*
 test_monitor.c
 
-ログ出力 monitor1..4 (sol/monitor.c) のテスト。
+ログ出力 monitor1..4 (sol/monitor.c) と所要時間 cputime() (sol/cputime.c) のテスト。
 
 ofd.log の行は契約である: 検証スクリプトが grep で読み (例:
 pml_reflection_check.sh は "ABC = PML"、各スクリプトは "normal end")、
@@ -20,6 +20,7 @@ OpenFDTD-X も表示に使う。ここでは決まった行がその形で出る
 
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define TMPLOG "ofd_test_monitor.log"
 
@@ -53,6 +54,33 @@ static long long value_mb(const char *key)
 static void w2(FILE *fp) { monitor2(fp, 0, 1); }
 static void w3(FILE *fp) { monitor3(fp, "ofd.log", "ofd.out"); }
 static void w4(FILE *fp) { const double cpu[5] = {0, 1, 3, 6, 10}; monitor4(fp, cpu); }
+
+/* cputime() (sol/cputime.c) : ログの所要時間 (monitor4 の part-1..4 と total) の
+   もと。期待値は time() の秒の境目 : 境目を 2 回またぐまで回すと、その間の
+   経過時間は 1 秒以上 2 秒以下。秒・ナノ秒の換算を誤る (1e-6 など) と外れる。
+   値は減らないこと (差を取って各区間の時間にするため)、秒より細かく刻むこと */
+static void check_cputime(void)
+{
+	time_t s0 = time(NULL);
+	while (time(NULL) == s0) { }          /* 秒の境目にそろえる */
+	const double t0 = cputime();
+	const time_t s1 = time(NULL);
+	double prev = t0, step = 1e30;
+	int mono = 1;
+	while (time(NULL) < s1 + 1) {          /* 次の境目まで (ちょうど 1 秒前後) */
+		const double t = cputime();
+		mono &= (t >= prev);
+		if ((t > prev) && (t - prev < step)) step = t - prev;
+		prev = t;
+	}
+	const double dt = cputime() - t0;
+	CHECK(mono);
+	/* 分解能 : 区間の所要時間は 1 秒未満のことが多いので、秒単位では役に立たない。
+	   観測した最小の増分が 10 ms 未満 (Linux/macOS は ns、Windows の clock() は ms) */
+	CHECK(step < 0.01);
+	CHECK((dt > 0.9) && (dt < 2.1));
+	if (!((dt > 0.9) && (dt < 2.1))) printf("    cputime elapsed = %g s (expected about 1 s)\n", dt);
+}
 
 static void set_size(int nx, int ny, int nz, int l)
 {
@@ -132,6 +160,8 @@ void test_monitor(void)
 	CHECK(has("  part-1 :       1.000\n"));
 	CHECK(has("  total  :      10.000\n"));
 	CHECK(has("=== normal end ===\n"));
+
+	check_cputime();
 
 	memcpy(Title, title0, sizeof(title0));
 	NMaterial = 0; NGeometry = 0;
