@@ -10,8 +10,10 @@
 #     インピーダンス表などが入る)
 #   - ofd_post の *.log (遠方界・近傍界・給電・観測点の数値)
 #
-# 収束履歴の平均値は各ランクの部分和を Allreduce で足すので、加算順で最後の
-# 桁が揺らぐ (tpa_half の -p 1 1 2 で 3.3e8 の 15 桁目)。収束履歴は有効 10 桁で比べる。
+# 収束履歴の平均値 (<E> <H>) は各ランクの部分和を Allreduce で足すので、加算順で
+# 揺らぐ。CPU / MPI は倍精度で 15 桁目 (tpa_half の -p 1 1 2)、CUDA 版は単精度で
+# 足すので 7 桁目 (相対 1e-6) まで動く。収束履歴だけは相対 1e-5 で比べ、他の行は
+# 完全一致を求める (平均値の Allreduce を壊すと桁違いにずれるので検出できる)。
 #
 # サンプル : dipole (給電・Mur) / sphere (平面波) / dipole_couple (PML・観測点) /
 #   loop_load (負荷) / pbc (周期境界 x, y) / pml_reflection (PML・観測点 4 つ) /
@@ -57,8 +59,26 @@ fi
 filter_log() {
 	grep -v -E -e 'process=' -e 'thread=' -e 'Memory size' -e '^  part-' -e '^  total ' \
 	        -e '^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) ' "$1" |
-	awk 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9.e+-]+$/ && $3 ~ /^[0-9.e+-]+$/ {
-		printf "%s %.10g %.10g\n", $1, $2, $3; next } { print }'
+	awk 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9.e+-]+$/ && $3 ~ /^[0-9.e+-]+$/ { next } { print }'
+}
+
+# 収束履歴 (step <E> <H>) の行だけ取り出す
+conv_log() {
+	awk 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9.e+-]+$/ && $3 ~ /^[0-9.e+-]+$/ { print }' "$1"
+}
+
+# 収束履歴を相対 1e-5 で比べる (行数・step が同じで、各値の相対差が 1e-5 以下)
+conv_same() {
+	awk 'NR == FNR { a[FNR] = $0; n = FNR; next }
+	     { split(a[FNR], r, " ")
+	       if ((FNR > n) || (r[1] != $1)) bad = 1
+	       for (c = 2; c <= 3; c++) {
+	         d = r[c] - $c; if (d < 0) d = -d
+	         m = (r[c] < 0) ? -r[c] : r[c]
+	         if (d > 1e-5 * m + 1e-30) bad = 1
+	       }
+	       m2 = FNR }
+	     END { exit (bad || (m2 != n)) ? 1 : 0 }' "$1" "$2"
 }
 
 status=0
@@ -89,6 +109,7 @@ for b in dipole sphere dipole_couple loop_load pbc pml_reflection tpa_half; do
 		fi
 		(cd "$d" && "$POST" -n 1 run.ofd > post.txt 2>&1) || true
 		filter_log "$d/ofd.log" > "$d/ofd.filtered"
+		conv_log "$d/ofd.log" > "$d/ofd.conv"
 		if [ -z "$ref" ]; then
 			ref="$d"
 			IFS=';'
@@ -96,6 +117,7 @@ for b in dipole sphere dipole_couple loop_load pbc pml_reflection tpa_half; do
 		fi
 		bad=""
 		cmp -s "$ref/ofd.filtered" "$d/ofd.filtered" || bad="$bad ofd.log"
+		conv_same "$ref/ofd.conv" "$d/ofd.conv" || bad="$bad convergence"
 		nlog=1
 		for f in "$ref"/*.log; do
 			g=$(basename "$f")
@@ -105,7 +127,7 @@ for b in dipole sphere dipole_couple loop_load pbc pml_reflection tpa_half; do
 		done
 		if [ -n "$bad" ]; then
 			echo "$b -p $p : differ from -p $(basename "$ref" | sed 's/^p//') :$bad -> NG"
-			diff "$ref/ofd.filtered" "$d/ofd.filtered" | head -6 || true
+			{ diff "$ref/ofd.filtered" "$d/ofd.filtered"; diff "$ref/ofd.conv" "$d/ofd.conv"; } | head -8 || true
 			status=1
 		else
 			echo "$b -p $p : $nlog logs identical -> OK"
