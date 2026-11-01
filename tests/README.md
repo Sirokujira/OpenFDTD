@@ -56,6 +56,8 @@ ctest --test-dir build --output-on-failure   # 全件
 | `size` | `sol/setupSize.c` | MPI の領域分割と配列レイアウト。全ランクの担当範囲が領域を**隙間・重なり無く覆い**、各ランクが空でなく最後のランクが端数を持つこと、ランク番号と (Ipx,Ipy,Ipz) の対応、余白 (Mur 1 層 / PML L 層) を含む索引 NA() が隅で 0 / NN−1 の 1 対 1、**分割数がセル数を超えると 1 を返す**こと |
 | `vector` | `sol/setup_vector.c` | vector 経路の係数展開。同じ形状で setup() を no-vector / vector の両方で通し、**全点の実効係数 (K1/K2 と C1/C2[id]) が一致**し、分散性の点のリストの数も一致すること。境界の材料は後に焼いた形状が勝つので、PEC と分散性の箱を先に置き後の誘電体と各方向で面を共有させ、PEC 優先・分散性優先 (周囲 4 つの H の各分岐)・添字 1 の境界を踏む。`vector_check.sh` は計算結果の通しの一致、こちらは食い違う点を指す |
 | `outfile` | `sol/writeout.c` ↔ `post/readout.c` | ソルバーと ofd_post の間の **ofd.out の契約**。全項目に値を入れて書き、グローバルを消して ofd_post の readout で読み戻し、全項目が一致・ファイルを読み切ることを確かめる。int64_t の NGline / NSurface (ファイル上は 4 バイト) は上位ビットにごみを入れてから読み、正しく置き換わること |
+| `alloc` | `sol/memallocfree?.c` | 配列の確保と解放。構成 (Mur/PML × vector 有無 × 近傍界の有無) ごとに確保し、各配列を**使う側の範囲いっぱいまで書き込み**、解放後に全ポインタを NULL にする。CI の ASan ステップで、確保不足は heap-buffer-overflow、解放漏れは (どこからも指されなくなるので) LeakSanitizer で検出される |
+| `monitor` | `sol/monitor.c` | ofd.log の行の形 (検証スクリプトが grep する `ABC = PML`・`normal end` など)、メモリ量・出力ファイルの見積りが**実際の確保量の ±5% で正** (1 周波数 × 1300³ セルで int の桁あふれが起きないこと) |
 | `farfield` | `sol/farfield.c`, `sol/nearfield_c.c` | 微小ダイポールの放射パターン (電気/磁気/Huygens)、等価電磁流 `n̂×H` / `-n̂×E` の 6 成分すべて、位相因子 `exp(+jk r̂·r')` の符号、偏波分解 (直線/円/楕円と `\|E\|²=長軸²+短軸²=RHCP²+LHCP²`)、節点補間が一次関数を厳密に再現すること、面の幾何 (法線・位置・面素・PBC)、正規化係数 `farfactor` |
 
 ## テストを足すとき
