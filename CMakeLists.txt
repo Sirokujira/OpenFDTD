@@ -636,6 +636,7 @@ if (WITH_TESTS)
         ${CMAKE_SOURCE_DIR}/sol/writeout.c
         ${CMAKE_SOURCE_DIR}/post/readout.c
         ${CMAKE_SOURCE_DIR}/sol/memallocfree1.c
+        ${CMAKE_SOURCE_DIR}/sol/initfield.c
         ${CMAKE_SOURCE_DIR}/sol/memallocfree2.c
         ${CMAKE_SOURCE_DIR}/sol/memallocfree3.c
         ${CMAKE_SOURCE_DIR}/sol/monitor.c

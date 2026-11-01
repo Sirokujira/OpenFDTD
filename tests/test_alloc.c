@@ -17,6 +17,9 @@ OS が回収する)。ここでは構成を変えて (Mur / PML、vector の有�
     忘れた配列は、どこからも指されなくなるので LeakSanitizer が漏れとして報告する
     (ポインタが残っていると「到達可能」とみなされ報告されない)
   - ASan の無い通常のビルドでも、確保・書き込み・解放の一連が通ること
+  - 書き込んだ後に initfield() を呼び、時間発展の状態 (E/H、Mur の 1 つ前の値、
+    PML の分割成分、収束履歴、給電・観測点の時系列、近傍界 DFT の和) が
+    すべて 0 に戻ること (使う側の範囲いっぱいまで)
 */
 
 #include "ofd.h"
@@ -29,6 +32,16 @@ OS が回収する)。ここでは構成を変えて (Mur / PML、vector の有�
 #define TOUCH(p, n) do { \
 		ok &= ((p) != NULL); \
 		if ((p) != NULL) memset((p), 0x5a, (size_t)(n) * sizeof(*(p))); \
+	} while (0)
+
+/* p[0 .. n-1] がすべて 0 か (0x5a で埋めた後に initfield で戻ったか) */
+#define ZERO(p, n) do { \
+		const unsigned char *b_ = (const unsigned char *)(p); \
+		const size_t nb_ = (size_t)(n) * sizeof(*(p)); \
+		int z_ = ((p) != NULL); \
+		for (size_t m_ = 0; z_ && (m_ < nb_); m_++) z_ = (b_[m_] == 0); \
+		zero &= z_; \
+		if (!z_) printf("    initfield : %s not zeroed\n", #p); \
 	} while (0)
 
 static void null_all(void)
@@ -129,6 +142,36 @@ static void run_config(int abc, int vector, int nfreq2)
 	}
 	CHECK(ok);
 	if (!ok) printf("    abc=%d vector=%d nfreq2=%d : NULL array\n", abc, vector, nfreq2);
+
+	/* initfield : 時間発展の状態をすべて 0 に戻す。残っていると結果が
+	   確保直後のメモリの中身に依存する (前の計算の値を引き継ぐ) */
+	Niter = 12345;
+	initfield();
+	int zero = 1;
+	ZERO(Ex, NN); ZERO(Ey, NN); ZERO(Ez, NN); ZERO(Hx, NN); ZERO(Hy, NN); ZERO(Hz, NN);
+	if (abc == 0) {
+		int fz = 1;
+		for (int64_t n = 0; n < numMurHx; n++) fz &= (fMurHx[n].f == 0);
+		for (int64_t n = 0; n < numMurHy; n++) fz &= (fMurHy[n].f == 0);
+		for (int64_t n = 0; n < numMurHz; n++) fz &= (fMurHz[n].f == 0);
+		CHECK(fz);
+	}
+	else {
+		ZERO(Exy, numPmlEx); ZERO(Exz, numPmlEx); ZERO(Eyz, numPmlEy); ZERO(Eyx, numPmlEy);
+		ZERO(Ezx, numPmlEz); ZERO(Ezy, numPmlEz);
+		ZERO(Hxy, numPmlHx); ZERO(Hxz, numPmlHx); ZERO(Hyz, numPmlHy); ZERO(Hyx, numPmlHy);
+		ZERO(Hzx, numPmlHz); ZERO(Hzy, numPmlHz);
+	}
+	ZERO(Eiter, nt); ZERO(Hiter, nt);
+	ZERO(VFeed, NFeed * nt); ZERO(IFeed, NFeed * nt);
+	ZERO(VPoint, (NPoint + 2) * nt);
+	if (nfreq2 > 0) {
+		const int64_t nf = (int64_t)NFreq2 * NN;
+		ZERO(cEx_r, nf); ZERO(cEx_i, nf); ZERO(cEy_r, nf); ZERO(cEy_i, nf); ZERO(cEz_r, nf); ZERO(cEz_i, nf);
+		ZERO(cHx_r, nf); ZERO(cHx_i, nf); ZERO(cHy_r, nf); ZERO(cHy_i, nf); ZERO(cHz_r, nf); ZERO(cHz_i, nf);
+	}
+	CHECK(zero);
+	CHECK(Niter == 0);
 
 	/* 解放 : memfree1 は入力由来の Xn..Zc / Feed / Point / Freq1/2 も解放する */
 	memfree1();
