@@ -61,6 +61,7 @@ void test_alloc(void);
 void test_monitor(void);
 void test_plot3d(void);
 void test_hdf5(void);
+void test_post(void);
 
 typedef struct {
 	const char *name;
@@ -97,6 +98,7 @@ static const testcase_t tests[] = {
 	{"monitor",    test_monitor},
 	{"plot3d",     test_plot3d},
 	{"hdf5",       test_hdf5},
+	{"post",       test_post},
 };
 
 static const int ntest = (int)(sizeof(tests) / sizeof(tests[0]));

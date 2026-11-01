@@ -60,6 +60,7 @@ ctest --test-dir build --output-on-failure   # 全件
 | `monitor` | `sol/monitor.c`, `sol/cputime.c` | ofd.log の行の形 (検証スクリプトが grep する `ABC = PML`・`normal end` など)、メモリ量・出力ファイルの見積りが**実際の確保量の ±5% で正** (1 周波数 × 1300³ セルで int の桁あふれが起きないこと)。`cputime()` が秒の境目 2 回の間で約 1 秒を返し、減らず、10 ms 未満で刻むこと |
 | `plot3d` | `sol/plot3dGeom.c`, `sol/ev3d.c` | 形状の 3D 表示 (plot3dgeom)。geom.ev3 を読み、形状の線分がすべて描かれ**材料 id で色が分かれる** (PEC 黒 / その他マゼンタ)、格子線が 2(N+1)×3 本、給電・インダクタ・観測点 (差分用 2 点込み) がその辺を各色で、タイトル、HTML 版の出力 |
 | `hdf5` | `sol/outputHdf5.c` | time_series_data.h5 の**値** (構成は `hdf5_layout_check.sh`)。一意な値を入れた場・近傍界 DFT・損失を書いて HDF5 API で読み戻し、(i,j,k,成分[,実部/虚部]) への詰め替えと余白を含まないこと、time_H = time − Dt/2、interval の間引き、収束履歴の iter = n·nout、metadata・Title、hdf5 = 0 で何も作らないこと |
+| `post` | `post/calcFar1d.c`, `post/calcFar2d.c`, `post/calcNear1d.c`, `post/calcNear2d.c`, `post/planewave.c` | ofd_post の計算。遠方界は x 方向微小電流の放射電力 1 − (sinθ cosφ)² で各面 (X/Y/Z/V/H) の角度の約束・far1dnorm・far2d の格子を確かめる。近傍界は線 (X:(y,z), Y:(z,x), Z:(x,y)) と面の (i,j,k) の割り当てと並び。平面波の入射界は中心で Ei、進行方向 λ/4 で −j 倍、垂直方向で位相不変 |
 | `farfield` | `sol/farfield.c`, `sol/nearfield_c.c` | 微小ダイポールの放射パターン (電気/磁気/Huygens)、等価電磁流 `n̂×H` / `-n̂×E` の 6 成分すべて、位相因子 `exp(+jk r̂·r')` の符号、偏波分解 (直線/円/楕円と `\|E\|²=長軸²+短軸²=RHCP²+LHCP²`)、節点補間が一次関数を厳密に再現すること、面の幾何 (法線・位置・面素・PBC)、正規化係数 `farfactor` 。frequency2 の無い入力 (NFreq2 = 0) でも面の幾何が作れること |
 
 ## テストを足すとき
