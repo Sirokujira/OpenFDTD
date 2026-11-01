@@ -66,6 +66,7 @@ void test_postdata(void);
 void test_readhdf5(void);
 void test_ev2d(void);
 void test_ev3dlib(void);
+void test_solve(void);
 
 typedef struct {
 	const char *name;
@@ -107,6 +108,7 @@ static const testcase_t tests[] = {
 	{"readhdf5",   test_readhdf5},
 	{"ev2d",       test_ev2d},
 	{"ev3dlib",    test_ev3dlib},
+	{"solve",      test_solve},
 };
 
 static const int ntest = (int)(sizeof(tests) / sizeof(tests[0]));

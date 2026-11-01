@@ -274,6 +274,49 @@ void test_hdf5(void)
 	}
 	remove(OFD_H5_FILE);
 
+	/* 2 枚目のファイルを大きい格子で書く : スナップショットの詰め替えバッファは
+	   最初の格子の大きさで確保されるので、ファイルを閉じるときに解放しないと
+	   ここであふれる (ASan のステップで heap-buffer-overflow として落ちる)。
+	   値も最後の節点まで正しく出ること */
+	{
+		const int nx0 = Nx, ny0 = Ny, nz0 = Nz;
+		const int64_t ni0 = Ni, nj0 = Nj, nk0 = Nk, n00 = N0, nn0 = NN;
+		Nx = NXT + 3; Ny = NYT + 2; Nz = NZT + 1;
+		iMax = Nx; jMax = Ny; kMax = Nz;
+		Nk = 1; Nj = (Nz + 3) * Nk; Ni = (Ny + 3) * Nj; N0 = Ni + Nj + Nk;
+		NN = NA(Nx + 1, Ny + 1, Nz + 1) + 1;
+		double *xn = (double *)calloc(Nx + 1, sizeof(double)), *xc = (double *)calloc(Nx, sizeof(double));
+		double *yn = (double *)calloc(Ny + 1, sizeof(double)), *yc = (double *)calloc(Ny, sizeof(double));
+		double *zn = (double *)calloc(Nz + 1, sizeof(double)), *zc = (double *)calloc(Nz, sizeof(double));
+		double *sx[6] = {Xn, Yn, Zn, Xc, Yc, Zc};
+		Xn = xn; Yn = yn; Zn = zn; Xc = xc; Yc = yc; Zc = zc;
+		real_t *g[6];
+		for (int c = 0; c < 6; c++) {
+			g[c] = (real_t *)calloc((size_t)NN, sizeof(real_t));
+			for (int i = 0; i <= Nx; i++) for (int j = 0; j <= Ny; j++) for (int k = 0; k <= Nz; k++)
+				g[c][NA(i, j, k)] = val(c / 3, c % 3, i, j, k);
+		}
+		Hdf5Interval = 0;
+		CHECK(hdf5_open(1) == 1);
+		hdf5_write_snapshot(0, Dt, g[0], g[1], g[2], g[3], g[4], g[5]);
+		hdf5_close();
+		const int64_t nnode2 = (int64_t)(Nx + 1) * (Ny + 1) * (Nz + 1);
+		float *b2 = (float *)malloc((size_t)nnode2 * 3 * sizeof(float));
+		hid_t f2 = H5Fopen(OFD_H5_FILE, H5F_ACC_RDONLY, H5P_DEFAULT);
+		CHECK(f2 >= 0);
+		if (f2 >= 0) {
+			CHECK(read_all(f2, "/timeseries/H", H5T_NATIVE_FLOAT, b2, (size_t)nnode2 * 3 * sizeof(float), sizeof(float)) == nnode2 * 3);
+			CHECK(b2[nnode2 * 3 - 1] == val(1, 2, Nx, Ny, Nz));
+			H5Fclose(f2);
+		}
+		remove(OFD_H5_FILE);
+		free(b2);
+		for (int c = 0; c < 6; c++) free(g[c]);
+		free(xn); free(yn); free(zn); free(xc); free(yc); free(zc);
+		Xn = sx[0]; Yn = sx[1]; Zn = sx[2]; Xc = sx[3]; Yc = sx[4]; Zc = sx[5];
+		Nx = nx0; Ny = ny0; Nz = nz0; Ni = ni0; Nj = nj0; Nk = nk0; N0 = n00; NN = nn0;
+	}
+
 	/* hdf5 = 0 なら何も作らない */
 	Hdf5Output = 0;
 	CHECK(hdf5_open(1) == 0);

@@ -577,6 +577,7 @@ if (WITH_TESTS)
         ${CMAKE_SOURCE_DIR}/tests/test_readhdf5.c
         ${CMAKE_SOURCE_DIR}/tests/test_ev2d.c
         ${CMAKE_SOURCE_DIR}/tests/test_ev3dlib.c
+        ${CMAKE_SOURCE_DIR}/tests/test_solve.c
     )
 
     # テスト対象の実装 (グローバル状態に依存しない自己完結した翻訳単位)
@@ -651,6 +652,7 @@ if (WITH_TESTS)
         ${CMAKE_SOURCE_DIR}/post/ev3dlib.c
         ${CMAKE_SOURCE_DIR}/sol/memallocfree1.c
         ${CMAKE_SOURCE_DIR}/sol/initfield.c
+        ${CMAKE_SOURCE_DIR}/sol/solve.c
         ${CMAKE_SOURCE_DIR}/sol/memallocfree2.c
         ${CMAKE_SOURCE_DIR}/sol/memallocfree3.c
         ${CMAKE_SOURCE_DIR}/sol/monitor.c
@@ -669,7 +671,7 @@ if (WITH_TESTS)
 
     # テスト名は tests/test_main.c のテーブルと対応している。
     # 1 件ずつ add_test することで、どれが落ちたか CTest の出力で分かる。
-    foreach(t complex finc utils vfeed ingeometry geomlines setupid farfield outputzin outputspara outputcoupling outputcross dispersion pml mur pbc feedload update observe setup input tpa size vector outfile alloc monitor plot3d hdf5 post postdata readhdf5 ev2d ev3dlib)
+    foreach(t complex finc utils vfeed ingeometry geomlines setupid farfield outputzin outputspara outputcoupling outputcross dispersion pml mur pbc feedload update observe setup input tpa size vector outfile alloc monitor plot3d hdf5 post postdata readhdf5 ev2d ev3dlib solve)
         add_test(NAME ${t} COMMAND ofd_tests ${t})
     endforeach()
 endif()

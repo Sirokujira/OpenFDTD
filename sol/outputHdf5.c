@@ -490,6 +490,14 @@ void hdf5_close(void)
 
 	if (h5file < 0) return;
 
+	/* スナップショットの詰め替えバッファを解放する。大きさは最初の
+	   hdf5_snapshot_begin() の格子で決まるので、残しておくと次のファイルを
+	   別の格子で書いたときにあふれる (ソルバーは 1 プロセスで 1 回しか書かないが、
+	   ユニットテストは格子を変えて何度も書く) */
+	free(snap_e);
+	free(snap_h);
+	snap_e = snap_h = NULL;
+
 	/* /timeseries の追記データセットを閉じる */
 	if (ts_itime >= 0) { H5Dclose(ts_itime); ts_itime = -1; }
 	if (ts_time  >= 0) { H5Dclose(ts_time);  ts_time  = -1; }
