@@ -664,6 +664,8 @@ jobs:
       - name: Validation test — decomposition invariance, 3D fields (ofd_cuda_mpi)
         env:
           OFD_ARGS: -cpu
+          # CUDA 版は収束履歴の平均値を単精度で足すので、分割で相対 1e-6 程度動く
+          CONV_TOL: 1e-4
         run: sh data/sample/decomp_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-decomp3d
 
       - name: Validation test — MPI network path (ofd_cuda_mpi, tcp btl)

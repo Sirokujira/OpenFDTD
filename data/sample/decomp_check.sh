@@ -12,7 +12,8 @@
 #
 # 収束履歴の平均値 (<E> <H>) は各ランクの部分和を Allreduce で足すので、加算順で
 # 揺らぐ。CPU / MPI は倍精度で 15 桁目 (tpa_half の -p 1 1 2)、CUDA 版は単精度で
-# 足すので 7 桁目 (相対 1e-6) まで動く。収束履歴だけは許容差付きで比べ、他の行は
+# 足すので相対 1e-6 程度動く (dipole_couple で 4.444615 / 4.444625)。収束履歴だけは
+# 許容差 (CONV_TOL) 付きで比べ、他の行は
 # 完全一致を求める (平均値の Allreduce を壊すと桁違いにずれるので検出できる)。
 #
 # サンプル : dipole (給電・Mur) / sphere (平面波) / dipole_couple (PML・観測点) /
@@ -30,6 +31,7 @@
 #   OFD_ARGS    … ソルバーに渡す追加オプション (例: "-cpu")
 #   OFD_POST    … 後処理 (既定: ソルバーと同じ場所の ofd_post)
 #   DECOMP_LIST … 試す分割の一覧 (既定は下記。先頭が基準)
+#   CONV_TOL    … 収束履歴の相対許容差 (既定 1e-5。CUDA 版は単精度の和なので CI では 1e-4)
 
 set -e
 
@@ -39,6 +41,7 @@ EXTRA="${OFD_ARGS:-}"
 MPIRUN="${MPIRUN:-mpirun}"
 MPIRUN_OPTS="${MPIRUN_OPTS:---oversubscribe}"
 DECOMP_LIST="${DECOMP_LIST:-1 1 1;2 1 1;1 2 1;1 1 2;2 2 2}"
+CONV_TOL="${CONV_TOL:-1e-5}"
 SRCDIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [ -z "$OFD" ]; then
@@ -67,19 +70,24 @@ conv_log() {
 	awk 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9.e+-]+$/ && $3 ~ /^[0-9.e+-]+$/ { print }' "$1"
 }
 
-# 収束履歴を比べる (行数・step が同じで、各値の差が 相対 1e-5 + 絶対 2e-6 以下。
-# 絶対の分は小数 6 桁で出る小さい値の最後の桁の丸め : CUDA 版の pbc で 0.073404 / 0.073405)
+# 収束履歴を比べる (行数・step が同じで、各値の差が 相対 $CONV_TOL + 絶対 2e-6 以下)。
+# 絶対の分は小数 6 桁で出る小さい値の最後の桁の丸め (CUDA 版の pbc で 0.073404 / 0.073405)。
+# 外れたら最大の相対差を表示する
 conv_same() {
-	awk 'NR == FNR { a[FNR] = $0; n = FNR; next }
+	awk -v tol="$CONV_TOL" '
+	     NR == FNR { a[FNR] = $0; n = FNR; next }
 	     { split(a[FNR], r, " ")
 	       if ((FNR > n) || (r[1] != $1)) bad = 1
 	       for (c = 2; c <= 3; c++) {
 	         d = r[c] - $c; if (d < 0) d = -d
 	         m = (r[c] < 0) ? -r[c] : r[c]
-	         if (d > 1e-5 * m + 2e-6) bad = 1
+	         if (d > tol * m + 2e-6) bad = 1
+	         if ((m > 0) && (d / m > dmax)) dmax = d / m
 	       }
 	       m2 = FNR }
-	     END { exit (bad || (m2 != n)) ? 1 : 0 }' "$1" "$2"
+	     END { if (m2 != n) bad = 1
+	           if (bad) printf "    convergence : max relative difference %.2e (lines %d / %d, tolerance %s)\n", dmax, n, m2, tol
+	           exit bad ? 1 : 0 }' "$1" "$2"
 }
 
 status=0
@@ -118,7 +126,7 @@ for b in dipole sphere dipole_couple loop_load pbc pml_reflection tpa_half; do
 		fi
 		bad=""
 		cmp -s "$ref/ofd.filtered" "$d/ofd.filtered" || bad="$bad ofd.log"
-		conv_same "$ref/ofd.conv" "$d/ofd.conv" || bad="$bad convergence"
+		conv_same "$ref/ofd.conv" "$d/ofd.conv" > "$d/conv.txt" || bad="$bad convergence"
 		nlog=1
 		for f in "$ref"/*.log; do
 			g=$(basename "$f")
@@ -128,7 +136,8 @@ for b in dipole sphere dipole_couple loop_load pbc pml_reflection tpa_half; do
 		done
 		if [ -n "$bad" ]; then
 			echo "$b -p $p : differ from -p $(basename "$ref" | sed 's/^p//') :$bad -> NG"
-			{ diff "$ref/ofd.filtered" "$d/ofd.filtered"; diff "$ref/ofd.conv" "$d/ofd.conv"; } | head -8 || true
+			cat "$d/conv.txt"
+			diff "$ref/ofd.filtered" "$d/ofd.filtered" | head -6 || true
 			status=1
 		else
 			echo "$b -p $p : $nlog logs identical -> OK"
