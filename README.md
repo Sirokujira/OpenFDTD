@@ -416,6 +416,20 @@ MPI / CUDA の書き手 (集約後の配列) も含みます。HDF5 の出力を
 使えません。`/post` は gzip で圧縮して書くので、ファイルの増え方は dipole で 12%
 (5.2 → 5.9 MB) です。
 
+### スレッド数による結果の不変性
+
+```sh
+sh data/sample/thread_check.sh /path/to/bin/ofd /tmp/thread
+```
+
+8 通りのサンプル (dipole / sphere / debye / pml_reflection / tpa_slab /
+dipole_couple / vector_lossy_feed とその `-vector`) を `-n 1` と `-n 4` で走らせ、
+`ofd.log` (スレッド数・日時・所要時間の行を除く) と ofd_post の `*.log` が
+一致することを確かめます。OpenMP の並列ループにデータ競合があると値がずれます
+(`sol/average.c` の `reduction` を外すと複数のサンプルで不一致になることを確認済み)。
+ofd.out のバイト比較では、違いは収束履歴の平均値 (reduction の加算順で最後の桁が
+揺らぐ) だけで、ログの 6 桁には現れません。CI の CPU 3 ジョブで実行します。
+
 ### 二光子吸収 (TPA) 非線形材料
 
 メタマテリアル装荷 Si 導波路の光活性化関数

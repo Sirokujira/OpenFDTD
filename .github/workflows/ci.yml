@@ -80,6 +80,11 @@ jobs:
       - name: Validation test — post processing from HDF5
         run: sh data/sample/hdf5_post_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-h5post
 
+      # OpenMP のスレッド数で結果が変わらないこと (-n 1 と -n 4 でログが一致。
+      # 並列ループのデータ競合を検出する。data/sample/thread_check.sh)
+      - name: Validation test — thread count invariance
+        run: sh data/sample/thread_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-thread
+
       # 熱解析レイヤ : 発熱密度がセル毎の材料を参照していることの検証
       # (熱解析レイヤは CPU 版のみなので build-mpi / build-cuda では実行しない)
       - name: Validation test — thermal per-cell material
@@ -219,6 +224,11 @@ jobs:
       # (/post の余白込み近傍界 DFT・給電・入力電力。data/sample/hdf5_post_check.sh)
       - name: Validation test — post processing from HDF5
         run: sh data/sample/hdf5_post_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-h5post
+
+      # OpenMP のスレッド数で結果が変わらないこと (-n 1 と -n 4 でログが一致。
+      # 並列ループのデータ競合を検出する。data/sample/thread_check.sh)
+      - name: Validation test — thread count invariance
+        run: sh data/sample/thread_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-thread
 
       # 熱解析レイヤ : 発熱密度がセル毎の材料を参照していることの検証
       # (熱解析レイヤは CPU 版のみなので build-mpi / build-cuda では実行しない)
@@ -378,6 +388,12 @@ jobs:
       - name: Validation test — post processing from HDF5
         shell: bash
         run: sh data/sample/hdf5_post_check.sh "$GITHUB_WORKSPACE/bin/ofd.exe" /tmp/smoke-h5post
+
+      # OpenMP のスレッド数で結果が変わらないこと (-n 1 と -n 4 でログが一致。
+      # 並列ループのデータ競合を検出する。data/sample/thread_check.sh)
+      - name: Validation test — thread count invariance
+        shell: bash
+        run: sh data/sample/thread_check.sh "$GITHUB_WORKSPACE/bin/ofd.exe" /tmp/smoke-thread
 
       - name: Upload binaries (artifact)
         uses: actions/upload-artifact@v4

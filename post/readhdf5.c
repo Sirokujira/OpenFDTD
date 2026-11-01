@@ -286,8 +286,9 @@ int readhdf5(void) {
     // 以前はここで coupling を読んで何にも使わずに捨てていた
 
     // s-parameters データの読み込み
+    // データセットが無い (書き手が作らなかった) ときに未初期化の値を使わないよう 0 で確保する
     spara_data_t *spara_data =
-        (spara_data_t *)malloc((size_t)NFreq1 * NPoint * sizeof(spara_data_t));
+        (spara_data_t *)calloc((size_t)NFreq1 * NPoint + 1, sizeof(spara_data_t));
     if (spara_data == NULL) {
         fprintf(stderr, "Error: malloc failed (spara_data)\n");
         return 1;
@@ -325,8 +326,9 @@ int readhdf5(void) {
 
     // input_impedance データの読み込み
     fprintf(stdout, "input_impedance_data (start)\n");
+    // 同上 (データセットが無ければ Zin / Ref は 0)
     input_impedance_data_t *input_impedance_data =
-        (input_impedance_data_t *)malloc((size_t)NFeed * NFreq1 * sizeof(input_impedance_data_t));
+        (input_impedance_data_t *)calloc((size_t)NFeed * NFreq1 + 1, sizeof(input_impedance_data_t));
     if (input_impedance_data == NULL) {
         fprintf(stderr, "Error: malloc failed (input_impedance_data)\n");
         return 1;
