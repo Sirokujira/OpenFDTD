@@ -21,7 +21,7 @@ readhdf5() が読む項目 — 格子の大きさと配列レイアウト、Dt�
 #include <stdlib.h>
 #include <string.h>
 
-void readhdf5(void);
+int readhdf5(void);
 
 static double *dup(const double *a, int n)
 {
@@ -92,7 +92,25 @@ void test_readhdf5(void)
 	remove(OFD_H5_FILE);
 	CHECK(hdf5_open(1) == 1);
 	hdf5_write_convergence(NITER, eit, hit);
+	/* /post の近傍界 DFT : 余白込みの NN 全体 (余白にも値を入れる) */
+	float *cf[12];
+	for (int b = 0; b < 12; b++) {
+		cf[b] = (float *)malloc((size_t)NFreq2 * NN * sizeof(float));
+		for (int64_t n = 0; n < NFreq2 * NN; n++) cf[b][n] = (float)(b * 100000 + n % 99991) * 0.5f;
+	}
+	hdf5_write_freqdomain(cf[0], cf[1], cf[2], cf[3], cf[4], cf[5], cf[6], cf[7], cf[8], cf[9], cf[10], cf[11]);
 	hdf5_close();
+	/* /post の給電と入力電力 (outputChars の後に追記される) */
+	Feed = (feed_t *)calloc(1, sizeof(feed_t));
+	Feed[0].dir = 'Y'; Feed[0].i = 2; Feed[0].j = 1; Feed[0].k = 3;
+	Feed[0].dx = 0.1; Feed[0].dy = 0.2; Feed[0].dz = 0.3;
+	Feed[0].volt = 1.5; Feed[0].delay = 2e-10; Feed[0].z0 = 73;
+	const feed_t feed0 = Feed[0];
+	const double pin0[2] = {0.75, 1.25}, pin1[2] = {0.8, 1.5};
+	Pin[0] = dup(pin0, 2); Pin[1] = dup(pin1, 2);
+	hdf5_write_post_feed();
+	free(Feed); free(Pin[0]); free(Pin[1]);
+	Feed = NULL; Pin[0] = Pin[1] = NULL;
 
 	/* ---- 消す (読み手が確保し直すもの) ----
 	   書いた配列はここでは解放しない : 解放すると readhdf5 の malloc が同じ領域を
@@ -116,7 +134,7 @@ void test_readhdf5(void)
 	void *edata;
 	H5Eget_auto2(H5E_DEFAULT, &efunc, &edata);
 	H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
-	readhdf5();
+	const int rret = readhdf5();
 	H5Eset_auto2(H5E_DEFAULT, efunc, edata);
 
 	CHECK((Nx == NX) && (Ny == NY) && (Nz == NZ));
@@ -136,6 +154,25 @@ void test_readhdf5(void)
 	CHECK(NSurface == NSURF);
 	CHECK((Surface != NULL) && (memcmp(&Surface[0], &s0, sizeof(surface_t)) == 0) && (memcmp(&Surface[1], &s1, sizeof(surface_t)) == 0));
 	CHECK(strcmp(Title, "readhdf5 round trip") == 0);
+
+	/* /post : 近傍界 DFT は余白込みで全要素、給電と入力電力 */
+	CHECK(rret == 0);
+	{
+		float *dst[12] = {cEx_r, cEx_i, cEy_r, cEy_i, cEz_r, cEz_i, cHx_r, cHx_i, cHy_r, cHy_i, cHz_r, cHz_i};
+		int ok = 1;
+		for (int b = 0; b < 12; b++) {
+			ok &= (dst[b] != NULL) && (memcmp(dst[b], cf[b], (size_t)NFreq2 * NN * sizeof(float)) == 0);
+		}
+		CHECK(ok);
+	}
+	CHECK((Feed != NULL) && (Feed[0].dir == 'Y') && (Feed[0].i == 2) && (Feed[0].j == 1) && (Feed[0].k == 3));
+	CHECK((Feed != NULL) && (Feed[0].dz == feed0.dz) && (Feed[0].volt == feed0.volt) && (Feed[0].delay == feed0.delay) && (Feed[0].z0 == 73));
+	CHECK(same(Pin[0], pin0, 2) && same(Pin[1], pin1, 2));
+	/* 遠方界の等価面は ofd.out と同じ大きさで確保される (/metadata の NSurface は
+	   ここでは 2 を書いたのでそれを読む。ソルバーが書く普通のファイルでは 0 で、
+	   alloc_farfield の大きさになる : data/sample/hdf5_post_check.sh) */
+	CHECK((SurfaceEx != NULL) && (SurfaceEx[0] != NULL) && (SurfaceHz[1] != NULL));
+	for (int b = 0; b < 12; b++) free(cf[b]);
 	if (strcmp(Title, "readhdf5 round trip") != 0) printf("    Title read back as \"%s\"\n", Title);
 
 	for (int n = 0; n < 12; n++) free(keep[n]);
@@ -145,6 +182,10 @@ void test_readhdf5(void)
 	free(Eiter); free(Hiter); free(VFeed); free(IFeed); free(Freq2);
 	free(Gline); free(MGline); free(Surface);
 	free(Feed); free(Zin); free(Ref); free(Pin[0]); free(Pin[1]); free(Spara);
+	for (int f = 0; f < NFreq2; f++) {
+		free(SurfaceEx[f]); free(SurfaceEy[f]); free(SurfaceEz[f]);
+		free(SurfaceHx[f]); free(SurfaceHy[f]); free(SurfaceHz[f]);
+	}
 	free(SurfaceEx); free(SurfaceEy); free(SurfaceEz); free(SurfaceHx); free(SurfaceHy); free(SurfaceHz);
 	free(cEx_r); free(cEx_i); free(cEy_r); free(cEy_i); free(cEz_r); free(cEz_i);
 	free(cHx_r); free(cHx_i); free(cHy_r); free(cHy_i); free(cHz_r); free(cHz_i);

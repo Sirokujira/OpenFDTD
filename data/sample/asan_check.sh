@@ -45,10 +45,12 @@ for f in "$SRCDIR"/*.ofd; do
 	# sanitizer の報告だけで判定する
 	(cd "$d" && "$OFD" -n 1 run.ofd > sol.txt 2>&1) || true
 	(cd "$d" && "$POST" -n 1 run.ofd > post.txt 2>&1) || true
+	# HDF5 から読む経路 (ofd_post -h5、post/readhdf5.c)
+	(cd "$d" && "$POST" -h5 -n 1 run.ofd > posth5.txt 2>&1) || true
 	# vector 経路 (-vector) は係数配列 K1/K2 を別に確保するので、別に走らせる
 	mkdir -p "$d/vec" && cp "$d/run.ofd" "$d/vec/"
 	(cd "$d/vec" && "$OFD" -vector -n 1 run.ofd > ../solvec.txt 2>&1) || true
-	for t in sol solvec post; do
+	for t in sol solvec post posth5; do
 		if grep -q "ERROR: AddressSanitizer\|ERROR: LeakSanitizer" "$d/$t.txt"; then
 			echo "*** $b ($t) :"
 			grep -m1 "ERROR:" "$d/$t.txt"
@@ -82,6 +84,6 @@ done
 if [ "$status" -ne 0 ]; then
 	echo "*** ASan check FAILED" >&2
 else
-	echo "ASan check passed ($n samples + inputs without frequency1 / frequency2, ofd (no-vector / vector) + ofd_post)"
+	echo "ASan check passed ($n samples + inputs without frequency1 / frequency2, ofd (no-vector / vector) + ofd_post (ofd.out / -h5))"
 fi
 exit $status

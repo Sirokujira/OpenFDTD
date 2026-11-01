@@ -12,6 +12,8 @@ post process
 
 static void args(int, char *[], int *, int *, char [], char []);
 
+static int UseHdf5 = 0;
+
 int main(int argc, char *argv[])
 {
 	const char errfmt[] = "*** file %s open error.\n";
@@ -42,27 +44,28 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	// read ofd.out
-	if ((fp_out = fopen(fn_out, "rb")) == NULL) {
-		printf(errfmt, fn_out);
-		if (prompt) getchar();
-		exit(1);
+	// read ofd.out (既定) / time_series_data.h5 (-h5)
+	if (UseHdf5) {
+		if (readhdf5()) {
+			if (prompt) getchar();
+			exit(1);
+		}
 	}
-	readout(fp_out);
-	fclose(fp_out);
+	else {
+		if ((fp_out = fopen(fn_out, "rb")) == NULL) {
+			printf(errfmt, fn_out);
+			if (prompt) getchar();
+			exit(1);
+		}
+		readout(fp_out);
+		fclose(fp_out);
+	}
 
-	// NOTE: 正本は ofd.out (readout)。readhdf5() (HDF5 移行用) は格子・時系列・
-	// 平面波・形状・等価面・Zin/Ref・S パラメータ・Title を読む
-	// (tests/test_readhdf5.c で書き手との往復を確認) が、ofd.out の代わりに
-	// するには、HDF5 の書き手 (sol/outputHdf5.c) に次がまだ無い:
-	//   - 給電の構造体 Feed (z0 などを遠方界の利得・不整合損が使う)
-	//   - 入力電力 Pin[0] / Pin[1] (遠方界の利得の分母)
-	//   - 余白込みの近傍界 DFT (cEx_r 等を NN の配置で)。/freqdomain は物理領域
-	//     0..N だけで、NodeH_c は境界の節点で余白 (添字 -1) の H を読むため、
-	//     境界の節点と遠方界の等価面の値が変わる
-	// これらを足すとファイルの約束 (include/ofd_hdf5.h、表示側が読む) が変わる
-	// ので、移行するときにまとめて決めること。coupling と散乱断面積は ofd_post が
-	// その場で計算し直す (または使わない) ので保存値は要らない。
+	// NOTE: 正本 (既定) は ofd.out (readout)。-h5 を付けると time_series_data.h5
+	// から読む (readhdf5)。ofd.out と同じ値を /metadata・/geometry・/convergence
+	// と /post (余白込みの近傍界 DFT・給電・入力電力) から復元するので、後処理の
+	// 出力は同じになる (data/sample/hdf5_post_check.sh が確かめる)。coupling と
+	// 散乱断面積は ofd_post がその場で計算し直す (または使わない) ので保存値は要らない。
 
 	// post process
 	post();
@@ -77,7 +80,7 @@ int main(int argc, char *argv[])
 static void args(int argc, char *argv[],
 	int *nthread, int *prompt, char fn_in[], char fn_out[])
 {
-	const char usage[] = "Usage : ofd_post [-n <thread>] [-html] [-out <outfile>] <datafile>";
+	const char usage[] = "Usage : ofd_post [-n <thread>] [-html] [-out <outfile>] [-h5] <datafile>";
 
 	if (argc < 2) {
 		printf("%s\n", usage);
@@ -100,6 +103,10 @@ static void args(int argc, char *argv[],
 		}
 		else if (!strcmp(*argv, "-prompt")) {
 			*prompt = 1;
+		}
+		else if (!strcmp(*argv, "-h5")) {
+			// ofd.out ではなく time_series_data.h5 から読む
+			UseHdf5 = 1;
 		}
 		else if (!strcmp(*argv, "-out")) {
 			argc--;

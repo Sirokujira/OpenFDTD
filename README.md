@@ -391,6 +391,29 @@ sh data/sample/pec_plate_check.sh /path/to/bin/ofd /tmp/pec
 変異はすべて NG になります。MPI / CUDA には `OFD_LAUNCHER` / `OFD_ARGS` で
 同じスクリプトを掛けられます (CI の 5 ジョブで実行)。
 
+### 後処理を HDF5 から読む (`ofd_post -h5`)
+
+ofd_post は既定で `ofd.out` を読みます。`-h5` を付けると、代わりに
+`time_series_data.h5` を読みます (`post/readhdf5.c`)。ソルバーは HDF5 に、後処理用の
+グループ `/post` を追加で書きます (表示側の既存のパスは変えていません。
+`include/ofd_hdf5.h`)。中身は次の 3 つです。
+
+- 余白込みの近傍界 DFT。`/freqdomain` は物理領域だけですが、節点補間は境界で余白の H を読むので、こちらが要ります
+- 給電の構造体
+- 入力電力 `Pin`
+
+```sh
+ofd_post -h5 -n 4 dipole.ofd        # ofd.out の代わりに time_series_data.h5 を読む
+sh data/sample/hdf5_post_check.sh /path/to/bin/ofd /tmp/h5post
+```
+
+`hdf5_post_check.sh` は 4 サンプル (dipole / dipole_couple / loop_load / sphere) で、
+ofd.out から読んだ場合と HDF5 から読んだ場合とで、ofd_post の出力 (`*.log` と
+`ev.ev2` / `ev.ev3`) がバイト単位で一致することを確かめます。CI の 5 ジョブで実行し、
+MPI / CUDA の書き手 (集約後の配列) も含みます。HDF5 の出力を止めた (`hdf5 = 0`) 場合は
+使えません。`/post` は gzip で圧縮して書くので、ファイルの増え方は dipole で 12%
+(5.2 → 5.9 MB) です。
+
 ### 二光子吸収 (TPA) 非線形材料
 
 メタマテリアル装荷 Si 導波路の光活性化関数

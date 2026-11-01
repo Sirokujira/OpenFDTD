@@ -40,6 +40,13 @@ HDF5 出力 (time_series_data.h5) の共有 API。
 /convergence/
     iter {Niter}, E {Niter}, H {Niter}   収束履歴 (平均電磁界)
 /metadata/                            スカラーと解析条件 (従来どおり)
+/post/                                後処理 ofd_post -h5 用 (ofd.out と同じ値。表示側は使わない)
+    cEx_r .. cHz_i {NFreq2, NN}       近傍界 DFT をソルバー内部の 1 次元配置 (余白込み)
+                                      のまま (f4)。/freqdomain は物理領域だけだが、
+                                      節点補間 NodeH_c が境界で余白 (添字 -1) を読むため
+    Feed {NFeed}                      給電 (複合型 dir,i,j,k,dx,dy,dz,volt,delay,z0)
+    Pin0, Pin1 {NFeed * NFreq2}       給電の入力電力 / 不整合損を戻した値 (f8)
+                                      (遠方界の利得の分母。outputChars の後に追記)
 
 配列はいずれも (i,j,k) の自然な 3 次元形状で書く。ソルバー内部の
 1 次元添字 (n = i*Ni + j*Nj + k*Nk + N0) は冗長領域 (PML/Mur のマージン) を
@@ -78,6 +85,7 @@ extern "C" {
 #include <stdint.h>
 
 #define OFD_H5_FILE "time_series_data.h5"
+#define OFD_H5_POST "/post"
 
 /* ファイルを作成し /geometry を書く。失敗時は 0 を返し、
    以降の hdf5_* 呼び出しは何もしない。
@@ -119,6 +127,10 @@ void hdf5_write_freqdomain(
 	const float *chx_r, const float *chx_i,
 	const float *chy_r, const float *chy_i,
 	const float *chz_r, const float *chz_i);
+
+/* 給電の構造体 Feed と入力電力 Pin[0] / Pin[1] を /post に追記する
+   (outputChars() の calcPin() の後に呼ぶ。閉じたファイルを開き直して書く)。 */
+void hdf5_write_post_feed(void);
 
 /* 損失電力密度を /loss に書く。ploss は {NFreq2, NN} の配列。
    値は入射振幅 1 あたりの相対量 (上のファイル構成の注記を参照)。
