@@ -42,6 +42,7 @@ VSWR と Y は zinDerived() にまとめてある。以前は同じ式が HDF5 �
 void calcZin(void);
 void calcPin(void);
 void zinDerived(d_complex_t zin, double ref_db, double *gin_mS, double *bin_mS, double *vswr);
+void outputChars(FILE *fp);
 
 #define NT   (2000)      /* 時間ステップ数 */
 #define FREQ (1.0e9)     /* 試験周波数 */
@@ -290,6 +291,79 @@ static void test_log_and_hdf5_agree(void)
 	CHECK_NEAR(ref, -28.737, 1e-3);
 }
 
+/* 6. outputChars() の振り分け : frequency1 の無い給電の入力
+      Pin (frequency2 ごとの入力電力) は遠方界の利得 (ofd_post) に使い、
+      ofd.out に NFeed * NFreq2 個書かれる。frequency1 (インピーダンスの
+      周波数) とは独立に求まっていなければならない。以前は calcPin() が
+      「NFeed && NFreq1」の中にあり、frequency1 の無い入力では Pin が NULL の
+      まま writeout() が落ちていた (Release でも SIGSEGV)。
+      インピーダンス (Zin) はこのとき求めない (条件から NFreq1 を外す変異は
+      等価: calcZin() 自身が NFreq1 <= 0 で何もせずに戻る)。 */
+static void test_dispatch_nofreq1(void)
+{
+	setup();
+	set_feed(50.0, 0.0);
+	free(Freq1);
+	Freq1 = NULL;
+	NFreq1 = 0;
+	NPoint = 0;
+	IPlanewave = 0;
+
+	/* outputChars() は遠方界の面も作るので、最小の格子と近傍界 DFT を用意する
+	   (1 セル、余白 1 層の配列レイアウト。setupSize() と同じ式) */
+	Nx = Ny = Nz = 1;
+	PBCx = PBCy = PBCz = 0;
+	Xn = (double *)calloc(2, sizeof(double)); Yn = (double *)calloc(2, sizeof(double)); Zn = (double *)calloc(2, sizeof(double));
+	Xc = (double *)calloc(1, sizeof(double)); Yc = (double *)calloc(1, sizeof(double)); Zc = (double *)calloc(1, sizeof(double));
+	Xn[1] = Yn[1] = Zn[1] = 0.1;
+	Xc[0] = Yc[0] = Zc[0] = 0.05;
+	iMin = jMin = kMin = 0;
+	iMax = jMax = kMax = 1;
+	Nk = 1;
+	Nj = 1 + 2 + 1;
+	Ni = (1 + 2 + 1) * Nj;
+	N0 = Ni + Nj + Nk;
+	NN = NA(2, 2, 2) + 1;
+	float *buf[12];
+	for (int b = 0; b < 12; b++) buf[b] = (float *)calloc((size_t)(NFreq2 * NN), sizeof(float));
+	cEx_r = buf[0]; cEx_i = buf[1]; cEy_r = buf[2]; cEy_i = buf[3]; cEz_r = buf[4]; cEz_i = buf[5];
+	cHx_r = buf[6]; cHx_i = buf[7]; cHy_r = buf[8]; cHy_i = buf[9]; cHz_r = buf[10]; cHz_i = buf[11];
+
+	FILE *fp = fopen("ofd_test_outputchars.log", "w");
+	CHECK(fp != NULL);
+	if (fp != NULL) {
+		outputChars(fp);
+		fclose(fp);
+	}
+	remove("ofd_test_outputchars.log");
+
+	CHECK(Pin[0] != NULL && Pin[1] != NULL);
+	if ((Pin[0] != NULL) && (Pin[1] != NULL)) {
+		CHECK_REL(Pin[0][0], expected_pin(50.0, 0.0), 1e-3);
+		CHECK_REL(Pin[1][0], Pin[0][0], 1e-6);      /* 整合 */
+	}
+	CHECK(Zin == NULL);                             /* frequency1 が無いので求めない */
+	CHECK(NSurface == 2 * 3);                       /* 遠方界の面 (1 セルの箱の 6 面) */
+
+	for (int ifreq = 0; ifreq < NFreq2; ifreq++) {
+		free(SurfaceEx[ifreq]); free(SurfaceEy[ifreq]); free(SurfaceEz[ifreq]);
+		free(SurfaceHx[ifreq]); free(SurfaceHy[ifreq]); free(SurfaceHz[ifreq]);
+	}
+	free(SurfaceEx); free(SurfaceEy); free(SurfaceEz);
+	free(SurfaceHx); free(SurfaceHy); free(SurfaceHz);
+	free(Surface);
+	Surface = NULL;
+	SurfaceEx = SurfaceEy = SurfaceEz = SurfaceHx = SurfaceHy = SurfaceHz = NULL;
+	NSurface = 0;
+	for (int b = 0; b < 12; b++) free(buf[b]);
+	cEx_r = cEx_i = cEy_r = cEy_i = cEz_r = cEz_i = NULL;
+	cHx_r = cHx_i = cHy_r = cHy_i = cHz_r = cHz_i = NULL;
+	free(Xn); free(Yn); free(Zn); free(Xc); free(Yc); free(Zc);
+	Xn = Yn = Zn = Xc = Yc = Zc = NULL;
+	Nx = Ny = Nz = 0; NN = 0;
+	teardown();
+}
+
 void test_outputzin(void)
 {
 	test_zin();
@@ -297,4 +371,5 @@ void test_outputzin(void)
 	test_pin();
 	test_derived();
 	test_log_and_hdf5_agree();
+	test_dispatch_nofreq1();
 }

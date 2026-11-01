@@ -591,6 +591,7 @@ if (WITH_TESTS)
         ${CMAKE_SOURCE_DIR}/sol/outputSpara.c
         ${CMAKE_SOURCE_DIR}/sol/outputCoupling.c
         ${CMAKE_SOURCE_DIR}/sol/outputCross.c
+        ${CMAKE_SOURCE_DIR}/sol/outputChars.c
         ${CMAKE_SOURCE_DIR}/sol/setupDispersion.c
         ${CMAKE_SOURCE_DIR}/sol/dispersionEx.c
         ${CMAKE_SOURCE_DIR}/sol/dispersionEy.c

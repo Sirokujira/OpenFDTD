@@ -7,6 +7,7 @@
 #   - load の作業配列のリーク (sol/input_data.c)
 #   - ofd_post の近傍界 1D 作図のリーク (post/plot2dNear1d0.c)
 #   - frequency2 の無い入力で Debug ビルドが assert で止まる (sol/farfield.c)
+#   - frequency1 の無い給電の入力で ofd.out の書き出しが落ちる (sol/outputChars.c)
 # を見つけている。ここでは data/sample/*.ofd をすべて反復 20 回に縮めて走らせ、
 # ソルバーと ofd_post のどちらかで sanitizer が何か報告したら失敗にする。
 #
@@ -58,25 +59,29 @@ for f in "$SRCDIR"/*.ofd; do
 	n=$((n + 1))
 done
 
-# frequency2 の無い入力 (正当な入力。全サンプルが frequency2 を持つので別に作る)。
-# 以前は alloc_farfield() の assert で Debug ビルドが計算の後に abort していた
-d="$WORK/nofreq2"
-mkdir -p "$d"
-sed -e 's/^solver = .*/solver = 20 10 0/' -e '/^frequency2/d' "$SRCDIR/dipole.ofd" > "$d/run.ofd"
-(cd "$d" && "$OFD" -n 1 run.ofd > sol.txt 2>&1) || true
-(cd "$d" && "$POST" -n 1 run.ofd > post.txt 2>&1) || true
-for t in sol post; do
-	if grep -q "ERROR: AddressSanitizer\|ERROR: LeakSanitizer\|Assertion" "$d/$t.txt" \
-	   || ! grep -q "normal end" "$d/ofd.log" 2>/dev/null; then
-		echo "*** nofreq2 ($t) :"
-		grep -m3 "ERROR:\|Assertion" "$d/$t.txt"
-		status=1
-	fi
+# frequency1 / frequency2 の片方が無い入力 (どちらも正当な入力。全サンプルが
+# 両方を持つので dipole から消して作る)。以前は
+#   - frequency2 が無いと alloc_farfield() の assert で Debug ビルドが計算の後に abort
+#   - frequency1 が無いと Pin が求まらず writeout() が NULL を書こうとして SIGSEGV
+for key in frequency1 frequency2; do
+	d="$WORK/no_$key"
+	mkdir -p "$d"
+	sed -e 's/^solver = .*/solver = 20 10 0/' -e "/^$key/d" "$SRCDIR/dipole.ofd" > "$d/run.ofd"
+	(cd "$d" && "$OFD" -n 1 run.ofd > sol.txt 2>&1) || true
+	(cd "$d" && "$POST" -n 1 run.ofd > post.txt 2>&1) || true
+	for t in sol post; do
+		if grep -q "ERROR: AddressSanitizer\|ERROR: LeakSanitizer\|Assertion\|invalid file length" "$d/$t.txt" \
+		   || ! grep -q "normal end" "$d/ofd.log" 2>/dev/null; then
+			echo "*** no $key ($t) :"
+			grep -m3 "ERROR:\|Assertion\|invalid" "$d/$t.txt"
+			status=1
+		fi
+	done
 done
 
 if [ "$status" -ne 0 ]; then
 	echo "*** ASan check FAILED" >&2
 else
-	echo "ASan check passed ($n samples + no-frequency2 input, ofd (no-vector / vector) + ofd_post)"
+	echo "ASan check passed ($n samples + inputs without frequency1 / frequency2, ofd (no-vector / vector) + ofd_post)"
 fi
 exit $status
