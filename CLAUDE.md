@@ -28,6 +28,7 @@ sh data/sample/thermal_material_check.sh bin/ofd /tmp/thermal-check  # 熱解析
 sh data/sample/sphere_rcs_check.sh       bin/ofd /tmp/rcs-check      # 平面波 RCS vs Mie
 sh data/sample/pml_reflection_check.sh   bin/ofd /tmp/pml-check      # PML 反射 vs 大領域の参照
 sh data/sample/dipole_gain_check.sh      bin/ofd /tmp/gain-check     # 遠方界の利得 (∮G=4π, 2.15 dBi)
+sh data/sample/pec_plate_check.sh        bin/ofd /tmp/pec-check      # 平面波の全電界 (定在波 2|sin kz|)
 # メモリ安全 (全サンプル × ofd + ofd_post を ASan で。ビルド方法はスクリプト冒頭)
 sh data/sample/asan_check.sh <asan の ofd> <asan の ofd_post> /tmp/asan-check
 ```

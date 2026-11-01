@@ -368,6 +368,28 @@ OFD_ARGS="-cpu" sh data/sample/dipole_gain_check.sh /path/to/bin/ofd_cuda /tmp/g
 誤り (8π→4π、1/2 の欠落、不整合損の無視、Pin の虚部の欠落、電流の半ステップの
 欠落、面素の誤りなど) はすべて NG になります。
 
+### 平面波の全電界の検証
+
+ソルバーは散乱界で解き、ofd_post が近傍界の表示で入射界 (`post/planewave.c`) を
+足して全電界にします (`near1dnoinc = 0` / `near2dnoinc = 0`、既定)。入射界の
+位相の基準点・向き・波数が違っても普通に終わるので、周期境界で無限に広い
+完全導体の平板に平面波を垂直に当て、導体の法線上の線を解析解と比べます
+(`data/sample/pec_plate.ofd` + `data/sample/pec_plate_check.sh`)。
+
+```sh
+sh data/sample/pec_plate_check.sh /path/to/bin/ofd /tmp/pec
+```
+
+| 判定 | 解析解 | 許容 | 実測 (2026-11) |
+|---|---|---|---|
+| 全電界 (導体の前) | \|E\| = 2\|sin kz\| (定在波) | ±0.1 | 0.053 (λ/20 の格子の数値分散) |
+| 全電界 (導体の中) | 0 | < 1e-3 | 2e-7 |
+| 散乱界 (全域) | \|Es\| = 1 | ±0.03 | 0.008 |
+
+入射界の符号・中心・波数 (5%)・位相の欠落、入射界を引く・noinc を反転する
+変異はすべて NG になります。MPI / CUDA には `OFD_LAUNCHER` / `OFD_ARGS` で
+同じスクリプトを掛けられます (CI の 5 ジョブで実行)。
+
 ### 二光子吸収 (TPA) 非線形材料
 
 メタマテリアル装荷 Si 導波路の光活性化関数

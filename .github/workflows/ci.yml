@@ -70,6 +70,11 @@ jobs:
       - name: Validation test — dipole gain
         run: sh data/sample/dipole_gain_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-gain
 
+      # 平面波の全電界 : 完全導体の平板の前の定在波 |E| = 2|sin kz|、散乱界 |Es| = 1
+      # (ofd_post が足す入射界の位相・向き。根拠は data/sample/pec_plate.ofd)
+      - name: Validation test — plane wave on PEC plate
+        run: sh data/sample/pec_plate_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-pec
+
       # 熱解析レイヤ : 発熱密度がセル毎の材料を参照していることの検証
       # (熱解析レイヤは CPU 版のみなので build-mpi / build-cuda では実行しない)
       - name: Validation test — thermal per-cell material
@@ -197,6 +202,11 @@ jobs:
       # 不整合損込みで 4π(1-|Γ|^2)、正面 2.15 dBi (根拠は data/sample/dipole_gain.ofd)
       - name: Validation test — dipole gain
         run: sh data/sample/dipole_gain_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-gain
+
+      # 平面波の全電界 : 完全導体の平板の前の定在波 |E| = 2|sin kz|、散乱界 |Es| = 1
+      # (ofd_post が足す入射界の位相・向き。根拠は data/sample/pec_plate.ofd)
+      - name: Validation test — plane wave on PEC plate
+        run: sh data/sample/pec_plate_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-pec
 
       # 熱解析レイヤ : 発熱密度がセル毎の材料を参照していることの検証
       # (熱解析レイヤは CPU 版のみなので build-mpi / build-cuda では実行しない)
@@ -345,6 +355,12 @@ jobs:
         shell: bash
         run: sh data/sample/dipole_gain_check.sh "$GITHUB_WORKSPACE/bin/ofd.exe" /tmp/smoke-gain
 
+      # 平面波の全電界 : 完全導体の平板の前の定在波 |E| = 2|sin kz|、散乱界 |Es| = 1
+      # (ofd_post が足す入射界の位相・向き。根拠は data/sample/pec_plate.ofd)
+      - name: Validation test — plane wave on PEC plate
+        shell: bash
+        run: sh data/sample/pec_plate_check.sh "$GITHUB_WORKSPACE/bin/ofd.exe" /tmp/smoke-pec
+
       - name: Upload binaries (artifact)
         uses: actions/upload-artifact@v4
         with:
@@ -472,6 +488,14 @@ jobs:
           OFD_ARGS: -p 1 1 2
         run: sh data/sample/dipole_gain_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-gain
 
+      # 平面波の全電界 : 完全導体の平板の前の定在波 |E| = 2|sin kz|、散乱界 |Es| = 1
+      # (ofd_post が足す入射界の位相・向き。根拠は data/sample/pec_plate.ofd)
+      - name: Validation test — plane wave on PEC plate (2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -p 1 1 2
+        run: sh data/sample/pec_plate_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-pec
+
       # ベクトル化更新経路 (-vector) は領域分割と組み合わせたときも
       # 通常経路と一致すること (係数配列 K1/K2 の展開範囲は
       # iMin..iMax などランクごとの担当範囲で決まるため、
@@ -551,6 +575,13 @@ jobs:
           OFD_ARGS: -cpu
         run: sh data/sample/dipole_gain_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda" /tmp/cuda-gain
 
+      # 平面波の全電界 : 完全導体の平板の前の定在波 |E| = 2|sin kz|、散乱界 |Es| = 1
+      # (ofd_post が足す入射界の位相・向き。根拠は data/sample/pec_plate.ofd)
+      - name: Validation test — plane wave on PEC plate (ofd_cuda, CPU execution mode)
+        env:
+          OFD_ARGS: -cpu
+        run: sh data/sample/pec_plate_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda" /tmp/cuda-pec
+
       # CUDA 版も -vector を受け付ける (cuda/update*.cu が VECTOR を見て
       # 係数配列と材料 ID 参照を切り替える)。-cpu 実行なのでカーネル起動
       # 構成は踏まないが、係数の展開と使い方の整合は判定できる。
@@ -589,6 +620,14 @@ jobs:
           OFD_LAUNCHER: mpirun --oversubscribe -n 2
           OFD_ARGS: -cpu -p 1 1 2
         run: sh data/sample/dipole_gain_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-gain
+
+      # 平面波の全電界 : 完全導体の平板の前の定在波 |E| = 2|sin kz|、散乱界 |Es| = 1
+      # (ofd_post が足す入射界の位相・向き。根拠は data/sample/pec_plate.ofd)
+      - name: Validation test — plane wave on PEC plate (ofd_cuda_mpi, 2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -cpu -p 1 1 2
+        run: sh data/sample/pec_plate_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-pec
 
       - name: Upload logs on failure
         if: failure()
