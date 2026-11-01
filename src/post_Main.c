@@ -51,9 +51,18 @@ int main(int argc, char *argv[])
 	readout(fp_out);
 	fclose(fp_out);
 
-	// NOTE: HDF5 (/metadata) からの読み込みは readhdf5() で可能だが、
-	// coupling/cross_section の展開が未実装のため、正本は従来どおり
-	// ofd.out (readout) とする。HDF5 移行が完了したら切り替える。
+	// NOTE: 正本は ofd.out (readout)。readhdf5() (HDF5 移行用) は格子・時系列・
+	// 平面波・形状・等価面・Zin/Ref・S パラメータ・Title を読む
+	// (tests/test_readhdf5.c で書き手との往復を確認) が、ofd.out の代わりに
+	// するには、HDF5 の書き手 (sol/outputHdf5.c) に次がまだ無い:
+	//   - 給電の構造体 Feed (z0 などを遠方界の利得・不整合損が使う)
+	//   - 入力電力 Pin[0] / Pin[1] (遠方界の利得の分母)
+	//   - 余白込みの近傍界 DFT (cEx_r 等を NN の配置で)。/freqdomain は物理領域
+	//     0..N だけで、NodeH_c は境界の節点で余白 (添字 -1) の H を読むため、
+	//     境界の節点と遠方界の等価面の値が変わる
+	// これらを足すとファイルの約束 (include/ofd_hdf5.h、表示側が読む) が変わる
+	// ので、移行するときにまとめて決めること。coupling と散乱断面積は ofd_post が
+	// その場で計算し直す (または使わない) ので保存値は要らない。
 
 	// post process
 	post();

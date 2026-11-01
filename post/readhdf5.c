@@ -11,25 +11,12 @@
 //#define TIME_STEP 200 // Solver.nout
 //#define MAX_STEP 1000 // Solver.maxiter
 
-#define COUPLING_DATASET_NAME "coupling"
 #define SPARA_DATASET_NAME "s_parameters"
-#define CROSS_SECTION_DATASET_NAME "cross_section"
 #define ZIN_DATASET_NAME "input_impedance"
 typedef struct {
     double magnitude_dB;
     double phase_deg;
-} coupling_data_t;
-
-typedef struct {
-    double magnitude_dB;
-    double phase_deg;
 } spara_data_t;
-
-typedef struct {
-    double frequency;
-    double backward;
-    double forward;
-} cross_section_data_t;
 
 typedef struct {
     double frequency;
@@ -269,31 +256,11 @@ void readhdf5() {
     //Surface = (surface_t *)malloc(size);
 
 //
-    // coupling データの読み込み
-    // MSVC は VLA 非対応のためフラット malloc (レイアウトは [NFreq1][NFeed][NPoint] と同一)
-    coupling_data_t *coupling_data =
-        (coupling_data_t *)malloc((size_t)NFreq1 * NFeed * NPoint * sizeof(coupling_data_t));
-    if (coupling_data == NULL) {
-        fprintf(stderr, "Error: malloc failed (coupling_data)\n");
-        return;
-    }
-
-    // coupling_data_t のデータ型を定義
-    hid_t datatype_id;
-    datatype_id = H5Tcreate(H5T_COMPOUND, sizeof(coupling_data_t));
-    H5Tinsert(datatype_id, "magnitude_dB", HOFFSET(coupling_data_t, magnitude_dB), H5T_NATIVE_DOUBLE);
-    H5Tinsert(datatype_id, "phase_deg", HOFFSET(coupling_data_t, phase_deg), H5T_NATIVE_DOUBLE);
-
-    dataset_id = H5Dopen(metadata_group_id, COUPLING_DATASET_NAME, H5P_DEFAULT);
-    status = H5Dread(dataset_id, datatype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, coupling_data);
-    if (status < 0) {
-        fprintf(stderr, "Error reading dataset: %s\n", COUPLING_DATASET_NAME);
-    }
-    //coupling_data から
-    H5Dclose(dataset_id);
-    H5Tclose(datatype_id);
-
-    free(coupling_data);
+    // coupling (/metadata/coupling) と散乱断面積 (/metadata/cross_section) は
+    // 読まない。ofd_post は coupling の保存値を使わず給電・観測点の時系列から
+    // その場で計算し直し (post/plot2dFreq.c が sol/outputCoupling.c の coupling()
+    // を呼ぶ)、散乱断面積はそもそも使わない (ソルバーの ofd.log と表示側向け)。
+    // 以前はここで coupling を読んで何にも使わずに捨てていた
 
     // s-parameters データの読み込み
     spara_data_t *spara_data =
@@ -304,7 +271,7 @@ void readhdf5() {
     }
 
     // データタイプを作成
-    datatype_id = H5Tcreate(H5T_COMPOUND, sizeof(spara_data_t));
+    hid_t datatype_id = H5Tcreate(H5T_COMPOUND, sizeof(spara_data_t));
     H5Tinsert(datatype_id, "magnitude_dB", HOFFSET(spara_data_t, magnitude_dB), H5T_NATIVE_DOUBLE);
     H5Tinsert(datatype_id, "phase_deg", HOFFSET(spara_data_t, phase_deg), H5T_NATIVE_DOUBLE);
 
@@ -330,25 +297,6 @@ void readhdf5() {
 
     free(spara_data);
 
-    // cross_section データの読み込み
-/*
-    cross_section_data_t cross_section_data[NFreq2];
-    
-    // cross_section_data_t 型のデータ型を定義
-    datatype_id = H5Tcreate(H5T_COMPOUND, sizeof(cross_section_data_t));
-    H5Tinsert(datatype_id, "frequency", HOFFSET(cross_section_data_t, frequency), H5T_NATIVE_DOUBLE);
-    H5Tinsert(datatype_id, "backward", HOFFSET(cross_section_data_t, backward), H5T_NATIVE_DOUBLE);
-    H5Tinsert(datatype_id, "forward", HOFFSET(cross_section_data_t, forward), H5T_NATIVE_DOUBLE);
-
-    dataset_id = H5Dopen(metadata_group_id, CROSS_SECTION_DATASET_NAME, H5P_DEFAULT);
-    status = H5Dread(dataset_id, datatype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, cross_section_data);
-    if (status < 0) {
-        fprintf(stderr, "Error reading dataset: %s\n", CROSS_SECTION_DATASET_NAME);
-    }
-    cross_section_data から 
-    H5Dclose(dataset_id);
-    H5Tclose(datatype_id);
-*/
 
     // input_impedance データの読み込み
     fprintf(stdout, "input_impedance_data (start)\n");
