@@ -21,8 +21,12 @@
 #
 # 使い方 : thread_check.sh <ソルバー(絶対パス)> [作業ディレクトリ]
 #
+# MPI 版 (ofd_mpi) にも掛けられる (各ランクの OpenMP スレッド数を変える)。
+# CUDA 版は -n を持たず、-cpu 実行の更新ループも OpenMP 化されていないので対象外。
+#
 # 環境変数:
-#   OFD_ARGS … ソルバーに渡す追加オプション (例: "-cpu")
+#   OFD_LAUNCHER … ソルバーの前に置くコマンド (例: "mpirun -n 2")
+#   OFD_ARGS … ソルバーに渡す追加オプション (例: "-p 1 1 2")
 #   OFD_POST … 後処理 (既定: ソルバーと同じ場所の ofd_post)
 
 set -e
@@ -30,6 +34,7 @@ set -e
 OFD="$1"
 WORK="${2:-.}"
 EXTRA="${OFD_ARGS:-}"
+LAUNCHER="${OFD_LAUNCHER:-}"
 SRCDIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [ -z "$OFD" ]; then
@@ -62,8 +67,8 @@ for run in dipole sphere debye pml_reflection tpa_slab dipole_couple vector_loss
 		d="$WORK/$tag/n$n"
 		mkdir -p "$d"
 		cp "$SRCDIR/$b.ofd" "$d/run.ofd"
-		# $EXTRA / $opt は複数語に分解させたいので意図的にクォートしない
-		(cd "$d" && "$OFD" $EXTRA $opt -n $n run.ofd > /dev/null 2>&1) || true
+		# $LAUNCHER / $EXTRA / $opt は複数語に分解させたいので意図的にクォートしない
+		(cd "$d" && $LAUNCHER "$OFD" $EXTRA $opt -n $n run.ofd > /dev/null 2>&1) || true
 		grep -q "normal end" "$d/ofd.log" || { echo "*** $tag : solver failed (-n $n)" >&2; status=1; continue 2; }
 		(cd "$d" && "$POST" -n 1 run.ofd > post.txt 2>&1) || true
 		filter_log "$d/ofd.log" > "$d/ofd.filtered"

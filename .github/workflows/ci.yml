@@ -538,6 +538,14 @@ jobs:
           OFD_ARGS: -p 1 1 2
         run: sh data/sample/hdf5_post_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-h5post
 
+      # OpenMP のスレッド数で結果が変わらないこと (2 プロセス × -n 1 / -n 4。
+      # MPI の分割と sol/ の OpenMP ループの組み合わせ。data/sample/thread_check.sh)
+      - name: Validation test — thread count invariance (2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -p 1 1 2
+        run: sh data/sample/thread_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-thread
+
       # ベクトル化更新経路 (-vector) は領域分割と組み合わせたときも
       # 通常経路と一致すること (係数配列 K1/K2 の展開範囲は
       # iMin..iMax などランクごとの担当範囲で決まるため、

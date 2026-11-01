@@ -428,7 +428,9 @@ dipole_couple / vector_lossy_feed とその `-vector`) を `-n 1` と `-n 4` で
 一致することを確かめます。OpenMP の並列ループにデータ競合があると値がずれます
 (`sol/average.c` の `reduction` を外すと複数のサンプルで不一致になることを確認済み)。
 ofd.out のバイト比較では、違いは収束履歴の平均値 (reduction の加算順で最後の桁が
-揺らぐ) だけで、ログの 6 桁には現れません。CI の CPU 3 ジョブで実行します。
+揺らぐ) だけで、ログの 6 桁には現れません。CI の CPU 3 ジョブと build-mpi (2 プロセス、
+`OFD_LAUNCHER` / `OFD_ARGS` で指定) で実行します。CUDA 版は `-n` を持たず、`-cpu` 実行の
+更新ループも OpenMP 化されていないので対象外です。
 
 ### 二光子吸収 (TPA) 非線形材料
 
