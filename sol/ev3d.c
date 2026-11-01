@@ -57,9 +57,31 @@ static void alloc_inc(void)
 }
 
 
+// 前の ev3d_init() の状態を解放する。plot3dGeom (ソルバー) と post (ofd_post) は
+// 1 プロセスで 1 回しか呼ばないが、2 回目の初期化で前のページと文字列が
+// 漏れないようにする (ユニットテストは 1 プロセスで複数回呼ぶ)
+static void release(void)
+{
+	if ((ev3d_ndata != NULL) && (ev3d_data != NULL)) {
+		for (int page = 0; page <= ev3d_page; page++) {
+			for (int n = 0; n < ev3d_ndata[page]; n++) {
+				if (ev3d_data[page][n].idx == -4) free(ev3d_data[page][n].str);
+			}
+			free(ev3d_data[page]);
+		}
+	}
+	free(ev3d_ndata);
+	free(ev3d_data);
+	ev3d_ndata = NULL;
+	ev3d_data = NULL;
+}
+
+
 // initialize
 void ev3d_init(void)
 {
+	release();
+
 	// page
 	ev3d_page = -1;
 

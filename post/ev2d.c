@@ -50,9 +50,31 @@ static void alloc_inc(void)
 }
 
 
+// 前の ev2d_init() の状態を解放する。post (ofd_post) は 1 プロセスで 1 回しか
+// 呼ばないが、2 回目の初期化で前のページと文字列が漏れないようにする
+// (ユニットテストは 1 プロセスで複数回呼ぶ)
+static void release(void)
+{
+	if ((ev2d_ndata != NULL) && (ev2d_data != NULL)) {
+		for (int page = 0; page <= ev2d_page; page++) {
+			for (int n = 0; n < ev2d_ndata[page]; n++) {
+				if (ev2d_data[page][n].idx == -3) free(ev2d_data[page][n].str);
+			}
+			free(ev2d_data[page]);
+		}
+	}
+	free(ev2d_ndata);
+	free(ev2d_data);
+	ev2d_ndata = NULL;
+	ev2d_data = NULL;
+}
+
+
 // initialize
 void ev2d_init(double width, double height)
 {
+	release();
+
 	// page
 	ev2d_page = -1;
 
