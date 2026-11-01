@@ -473,7 +473,7 @@ OFD_ARGS="-cpu" sh data/sample/tpa_slab_check.sh /path/to/bin/ofd_cuda /tmp/tpa-
 
 # 領域分割の取り方によらず結果が一致することの検証 (MPI 版)
 sh data/sample/tpa_decomp_check.sh /path/to/bin/ofd_mpi /tmp/tpa-decomp
-# 同じく 3 次元に広がる場で (TPA 層を x / y とも半分にした tpa_half 、周期境界を y / z に回した pbc_yz を含む 8 サンプル)
+# 同じく 3 次元に広がる場で (TPA 層を x / y とも半分にした tpa_half、周期境界を y / z に回した pbc_yz を含む 8 サンプル)
 sh data/sample/decomp_check.sh /path/to/bin/ofd_mpi /tmp/decomp
 ```
 
