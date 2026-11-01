@@ -197,4 +197,6 @@ void plot2dNear1d0(
 	for (int n = 0; n < ndeg; n++) {
 		free(ddeg[n]);
 	}
+	free(damp);
+	free(ddeg);
 }

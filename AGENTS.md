@@ -27,6 +27,8 @@ sh data/sample/tpa_slab_check.sh        "$PWD/bin/ofd" /tmp/tpa-check      # TPA
 sh data/sample/thermal_material_check.sh "$PWD/bin/ofd" /tmp/thermal-check # 熱解析の材料参照
 sh data/sample/sphere_rcs_check.sh       "$PWD/bin/ofd" /tmp/rcs-check     # 平面波 RCS vs Mie
 sh data/sample/pml_reflection_check.sh   "$PWD/bin/ofd" /tmp/pml-check     # PML 反射 vs 大領域の参照
+# メモリ安全 (全サンプル × ofd + ofd_post を ASan で。ビルド方法はスクリプト冒頭)
+sh data/sample/asan_check.sh <asan の ofd> <asan の ofd_post> /tmp/asan-check
 ```
 
 MPI / CUDA を触ったら該当ビルドも通すこと (下記「4 実装」参照)。
