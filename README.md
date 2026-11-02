@@ -532,6 +532,45 @@ Windows (MSVC) での CUDA / MPI ビルドは CUDA Toolkit を管理者権限な
 サポートしないため、`-DCMAKE_CUDA_ARCHITECTURES=<実機の値>` を渡すか、
 既定 (nvcc 13 以降は 75) に任せます)。
 
+#### 実機 GPU での確認手順 (GPU 側を変更したとき)
+
+CI は `-cpu` でしか走らないので、`cuda/` / `cuda_mpi/` を変更したら実機で
+**HDM (既定。`-cpu` も `-um` も付けない)** のまま一度走らせてください。HDM は
+場の配列が device にだけあるため、host から読むコードがあるとここでしか
+落ちません (HDF5 スナップショットと TPA の透過率測定で実際にありました)。
+
+Windows では Git Bash で実行します (`sh` / `awk` / `grep` / `cmp` を使います)。
+MS-MPI の `mpiexec` は `--oversubscribe` を受け付けないので、`MPIRUN_OPTS` に
+空白 1 文字を渡して既定のオプションを消します。
+
+```sh
+B=/path/to/bin          # ofd_cuda(.exe) / ofd_cuda_mpi(.exe) / ofd_post(.exe) のある場所
+
+# 1. TPA の解析解 (平面波 + TPA + 観測点。透過率測定が device の E を読む経路)
+sh data/sample/tpa_slab_check.sh "$B/ofd_cuda.exe" /tmp/gpu-tpa
+OFD_ARGS="-um" sh data/sample/tpa_slab_check.sh "$B/ofd_cuda.exe" /tmp/gpu-tpa-um
+
+# 2. CUDA+MPI の領域分割 (TPA の成分間の E 交換。分割は GPU 1 枚でも走る)
+MPIRUN=mpiexec MPIRUN_OPTS=" " DECOMP_LIST="1 1 1;1 1 2;2 1 1;1 2 1" \
+  sh data/sample/tpa_decomp_check.sh "$B/ofd_cuda_mpi.exe" /tmp/gpu-tpa-decomp
+MPIRUN=mpiexec MPIRUN_OPTS=" " DECOMP_LIST="1 1 1;1 1 2;2 1 1;1 2 1" CONV_TOL=1e-4 \
+  sh data/sample/decomp_check.sh "$B/ofd_cuda_mpi.exe" /tmp/gpu-decomp
+
+# 3. HDF5 から後処理 (スナップショットを host へ写す経路)
+sh data/sample/hdf5_post_check.sh "$B/ofd_cuda.exe" /tmp/gpu-h5post
+```
+
+合格の基準:
+
+- どの実行も `normal end` まで進むこと (0xC0000005 などで落ちないこと)
+- 1 の 3 点が解析解の ±7% に入ること。透過率は `-cpu` の値 (0.646838) と
+  float の精度の範囲 (6 桁目まで) で一致すること
+- 2 / 3 が `passed` で終わること。2 の透過率は分割によらず同じ値になること
+  (観測点 1 点の値の最大なので総和の順序に依存しない)
+
+確認したら、日付・環境・結果を上の段落と CLAUDE.md / AGENTS.md の CI の節に
+追記してください。
+
 | 実行 | 透過率 |
 |---|---|
 | CPU (`ofd`) | 0.646848 |

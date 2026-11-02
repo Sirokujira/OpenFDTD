@@ -199,6 +199,9 @@ OFD_LAUNCHER="mpirun --oversubscribe -n 2" OFD_ARGS="-p 1 1 2" \
 HDM (既定) で HDF5 スナップショットが device メモリを host から読んで落ちる
 バグを修正した (`snapshot_host_fields`)。`-cpu` / UM では出ないので、GPU 側を
 触ったら実機で HDM のまま一度走らせること。
+TPA の透過率測定 (`cuda*/solve.cu` の `tpaMon`) も同じ種類で、2026-11 に
+`field_at()` で 1 要素を device から写すよう直した (実機未確認)。
+手順と合格基準は README の「実機 GPU での確認手順」。
 
 Windows は vcpkg (`hdf5[core,zlib]:x64-windows-static-md`)。szip は libaec の 429 で
 落ちるため使わない。`build-cuda` は distro の `nvidia-cuda-toolkit` と gcc の組み合わせに
