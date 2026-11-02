@@ -127,8 +127,10 @@ static void memory_size(int *cpu, int *gpu)
 	}
 
 	// cEx, cEy, cEz, cHx, cHy, cHz
-	int64_t cpu_mem = mem + NFreq2 * Nx * Ny * Nz * 12 * sizeof(float);
-	int64_t gpu_mem = mem + NFreq2 * NN * 12 * sizeof(float);
+	// 積は int64_t で計算する。以前は NFreq2 * Nx * Ny * Nz を int で掛けていて、
+	// 周波数 30 × 500^3 セル (3.75e9) のような大きな問題で桁あふれしていた
+	int64_t cpu_mem = mem + (int64_t)NFreq2 * Nx * Ny * Nz * 12 * (int64_t)sizeof(float);
+	int64_t gpu_mem = mem + (int64_t)NFreq2 * NN * 12 * (int64_t)sizeof(float);
 
 	*cpu = (int)(cpu_mem / 1024 / 1024) + 1;
 	*gpu = (int)(gpu_mem / 1024 / 1024) + 1;
@@ -138,5 +140,5 @@ static void memory_size(int *cpu, int *gpu)
 // output filesize [MB]
 static int output_size(void)
 {
-	return (int)(NFreq2 * Nx * Ny * Nz * 12 * sizeof(float) / 1024 / 1024) + 1;
+	return (int)((int64_t)NFreq2 * Nx * Ny * Nz * 12 * (int64_t)sizeof(float) / 1024 / 1024) + 1;
 }

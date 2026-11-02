@@ -12,6 +12,8 @@ post process
 
 static void args(int, char *[], int *, int *, char [], char []);
 
+static int UseHdf5 = 0;
+
 int main(int argc, char *argv[])
 {
 	const char errfmt[] = "*** file %s open error.\n";
@@ -42,18 +44,28 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	// read ofd.out
-	if ((fp_out = fopen(fn_out, "rb")) == NULL) {
-		printf(errfmt, fn_out);
-		if (prompt) getchar();
-		exit(1);
+	// read ofd.out (既定) / time_series_data.h5 (-h5)
+	if (UseHdf5) {
+		if (readhdf5()) {
+			if (prompt) getchar();
+			exit(1);
+		}
 	}
-	readout(fp_out);
-	fclose(fp_out);
+	else {
+		if ((fp_out = fopen(fn_out, "rb")) == NULL) {
+			printf(errfmt, fn_out);
+			if (prompt) getchar();
+			exit(1);
+		}
+		readout(fp_out);
+		fclose(fp_out);
+	}
 
-	// NOTE: HDF5 (/metadata) からの読み込みは readhdf5() で可能だが、
-	// coupling/cross_section の展開が未実装のため、正本は従来どおり
-	// ofd.out (readout) とする。HDF5 移行が完了したら切り替える。
+	// NOTE: 正本 (既定) は ofd.out (readout)。-h5 を付けると time_series_data.h5
+	// から読む (readhdf5)。ofd.out と同じ値を /metadata・/geometry・/convergence
+	// と /post (余白込みの近傍界 DFT・給電・入力電力) から復元するので、後処理の
+	// 出力は同じになる (data/sample/hdf5_post_check.sh が確かめる)。coupling と
+	// 散乱断面積は ofd_post がその場で計算し直す (または使わない) ので保存値は要らない。
 
 	// post process
 	post();
@@ -68,7 +80,7 @@ int main(int argc, char *argv[])
 static void args(int argc, char *argv[],
 	int *nthread, int *prompt, char fn_in[], char fn_out[])
 {
-	const char usage[] = "Usage : ofd_post [-n <thread>] [-html] [-out <outfile>] <datafile>";
+	const char usage[] = "Usage : ofd_post [-n <thread>] [-html] [-out <outfile>] [-h5] <datafile>";
 
 	if (argc < 2) {
 		printf("%s\n", usage);
@@ -91,6 +103,10 @@ static void args(int argc, char *argv[],
 		}
 		else if (!strcmp(*argv, "-prompt")) {
 			*prompt = 1;
+		}
+		else if (!strcmp(*argv, "-h5")) {
+			// ofd.out ではなく time_series_data.h5 から読む
+			UseHdf5 = 1;
 		}
 		else if (!strcmp(*argv, "-out")) {
 			argc--;

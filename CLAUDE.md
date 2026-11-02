@@ -26,6 +26,14 @@ $OLDPWD/bin/ofd -n 2 dipole.ofd && grep "normal end" ofd.log
 sh data/sample/tpa_slab_check.sh         bin/ofd /tmp/tpa-check      # TPA ±7%
 sh data/sample/thermal_material_check.sh bin/ofd /tmp/thermal-check  # 熱解析の材料参照
 sh data/sample/sphere_rcs_check.sh       bin/ofd /tmp/rcs-check      # 平面波 RCS vs Mie
+sh data/sample/pml_reflection_check.sh   bin/ofd /tmp/pml-check      # PML 反射 vs 大領域の参照
+sh data/sample/dipole_gain_check.sh      bin/ofd /tmp/gain-check     # 遠方界の利得 (∮G=4π, 2.15 dBi)
+sh data/sample/pec_plate_check.sh        bin/ofd /tmp/pec-check      # 平面波の全電界 (定在波 2|sin kz|)
+sh data/sample/hdf5_post_check.sh        bin/ofd /tmp/h5post-check   # ofd_post -h5 が ofd.out と同じ出力
+sh data/sample/thread_check.sh          "$PWD/bin/ofd" /tmp/thread-check  # -n 1 と -n 4 でログが一致 (OpenMP の競合)
+sh data/sample/decomp_check.sh          "$PWD/bin/ofd_mpi" /tmp/decomp-check  # MPI の分割 (x/y/z/2x2x2) で 1 プロセスと一致
+# メモリ安全 (全サンプル × ofd + ofd_post を ASan で。ビルド方法はスクリプト冒頭)
+sh data/sample/asan_check.sh <asan の ofd> <asan の ofd_post> /tmp/asan-check
 ```
 
 `/check` (ビルド+回帰+TPA)、`/preflight` (push 前の一括点検)、
@@ -76,4 +84,7 @@ device メモリを host から読んで落ちる**バグを見つけて直し�
 (`cuda/solve.cu` / `cuda_mpi/solve.cu` の `snapshot_host_fields`) — `-cpu` と
 UM では出ないので CI では検出できない種類の不具合。GPU 側を触ったら
 実機で一度は HDM (既定) のまま走らせること。
+TPA の透過率測定 (`cuda*/solve.cu` の `tpaMon`) も同じ種類で、2026-11 に
+`field_at()` で 1 要素を device から写すよう直した (実機未確認)。
+手順と合格基準は README の「実機 GPU での確認手順」。
 タグ `v*` push で Release にバイナリ添付。

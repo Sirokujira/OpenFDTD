@@ -7,6 +7,7 @@ calculate and output to oth.log
 #include "ofd.h"
 #include "complex.h"
 #include "ofd_prototype.h"
+#include "ofd_hdf5.h"
 
 
 void outputChars(FILE *fp)
@@ -19,8 +20,16 @@ void outputChars(FILE *fp)
 	if (NFeed && NFreq1) {
 		calcZin();
 		outputZin(fp);
-		calcPin();  // for post
 	}
+
+	// input power at frequency2 (far field gain in post, written to ofd.out).
+	// frequency1 とは独立 (calcPin は NFeed / NFreq2 を自分で見る)。以前は上の
+	// 条件の中にあり、frequency1 の無い給電の入力では Pin が NULL のまま
+	// writeout() が NFeed * NFreq2 個を書こうとして落ちていた
+	calcPin();
+
+	// HDF5 の /post (ofd_post -h5 用) に給電と入力電力を追記する
+	hdf5_write_post_feed();
 
 	// S-parameters
 	if (NPoint && NFreq1) {

@@ -39,6 +39,34 @@ void test_vfeed(void);
 void test_ingeometry(void);
 void test_geomlines(void);
 void test_setupid(void);
+void test_farfield(void);
+void test_outputzin(void);
+void test_outputspara(void);
+void test_outputcoupling(void);
+void test_outputcross(void);
+void test_dispersion(void);
+void test_pml(void);
+void test_mur(void);
+void test_pbc(void);
+void test_feedload(void);
+void test_update(void);
+void test_observe(void);
+void test_setup(void);
+void test_input(void);
+void test_tpa(void);
+void test_size(void);
+void test_vector(void);
+void test_outfile(void);
+void test_alloc(void);
+void test_monitor(void);
+void test_plot3d(void);
+void test_hdf5(void);
+void test_post(void);
+void test_postdata(void);
+void test_readhdf5(void);
+void test_ev2d(void);
+void test_ev3dlib(void);
+void test_solve(void);
 
 typedef struct {
 	const char *name;
@@ -53,6 +81,34 @@ static const testcase_t tests[] = {
 	{"ingeometry", test_ingeometry},
 	{"geomlines",  test_geomlines},
 	{"setupid",    test_setupid},
+	{"farfield",   test_farfield},
+	{"outputzin",  test_outputzin},
+	{"outputspara",test_outputspara},
+	{"outputcoupling", test_outputcoupling},
+	{"outputcross", test_outputcross},
+	{"dispersion", test_dispersion},
+	{"pml",        test_pml},
+	{"mur",        test_mur},
+	{"pbc",        test_pbc},
+	{"feedload",   test_feedload},
+	{"update",     test_update},
+	{"observe",    test_observe},
+	{"setup",      test_setup},
+	{"input",      test_input},
+	{"tpa",        test_tpa},
+	{"size",       test_size},
+	{"vector",     test_vector},
+	{"outfile",    test_outfile},
+	{"alloc",      test_alloc},
+	{"monitor",    test_monitor},
+	{"plot3d",     test_plot3d},
+	{"hdf5",       test_hdf5},
+	{"post",       test_post},
+	{"postdata",   test_postdata},
+	{"readhdf5",   test_readhdf5},
+	{"ev2d",       test_ev2d},
+	{"ev3dlib",    test_ev3dlib},
+	{"solve",      test_solve},
 };
 
 static const int ntest = (int)(sizeof(tests) / sizeof(tests[0]));

@@ -1,0 +1,41 @@
+OpenFDTD 4 2
+title = plane wave on a PEC plate : standing wave
+# 平面波の全電界 (散乱界 + 入射界) の検証ケース。pec_plate_check.sh から使う。
+#
+# ソルバーは散乱界で解き、ofd_post が近傍界の表示で入射界 (post/planewave.c) を
+# 足して全電界にする (near1dnoinc = 0、既定)。入射界の位相の基準点 (領域の中心)、
+# 伝搬の向き・符号、波数のどれが違っても、散乱界と入射界が正しく打ち消し合わず、
+# それでも ofd_post は普通に終わる。
+#
+# 配置: x, y は周期境界 (pbc = 1 1 0) で無限に広い完全導体の平板 (z <= 0)。
+# 平面波 (planewave = 0 0 1) は -z 方向に進み、Ex 偏波で平板に垂直に入射する。
+# 3 GHz で λ = 0.1 m、セル 0.005 m (λ/20)。
+#
+# 解析解 (振幅 1 の入射波、完全導体で反射係数 -1):
+#   全電界   |E(z)| = 2 |sin(k z)|   (z > 0, k = 2π/λ)   定在波、z = 0 で 0
+#            |E| = 0                 (導体の中)
+#   散乱界   |Es| = 1                (z > 0 では反射波、導体の中では -入射波)
+#
+# 線 (plotnear1d, post/outputNear1d.c) と面 (plotnear2d, post/outputNear2d.c) は
+# 入射界を別々のコードで足すので、両方を同じ解析解で判定する (面は y = 0 の
+# xz 面。x 方向は周期なので値は z だけで決まる)。
+#
+# 判定 (2026-11 の実測。線・面とも同じ値):
+#   全電界 : z > 0 で max| |E| - 2|sin kz| | < 0.1    (実測 0.053。λ/20 の格子の
+#            数値分散で節の位置が少しずれる分)
+#            導体の中で max|E| < 1e-3                   (実測 3e-7)
+#   散乱界 : 全域で | |Es| - 1 | < 0.03                 (実測 0.008)
+xmesh = -0.01 4 0.01
+ymesh = -0.01 4 0.01
+zmesh = -0.1 60 0.2
+geometry = 1 1 -0.02 0.02 -0.02 0.02 -0.2 0.0
+planewave = 0 0 1
+pbc = 1 1 0
+frequency2 = 3e9 3e9 0
+solver = 4000 100 1e-4
+plotnear1d = E Z 0 0
+near1dnoinc = 0
+plotnear2d = E Y 0
+near2ddim = 0 0
+near2dnoinc = 0
+end

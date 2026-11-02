@@ -26,6 +26,14 @@ mkdir -p /tmp/smoke && cp data/sample/dipole.ofd /tmp/smoke/ && cd /tmp/smoke
 sh data/sample/tpa_slab_check.sh        "$PWD/bin/ofd" /tmp/tpa-check      # TPA ±7%
 sh data/sample/thermal_material_check.sh "$PWD/bin/ofd" /tmp/thermal-check # 熱解析の材料参照
 sh data/sample/sphere_rcs_check.sh       "$PWD/bin/ofd" /tmp/rcs-check     # 平面波 RCS vs Mie
+sh data/sample/pml_reflection_check.sh   "$PWD/bin/ofd" /tmp/pml-check     # PML 反射 vs 大領域の参照
+sh data/sample/dipole_gain_check.sh      "$PWD/bin/ofd" /tmp/gain-check    # 遠方界の利得 (∮G=4π, 2.15 dBi)
+sh data/sample/pec_plate_check.sh        "$PWD/bin/ofd" /tmp/pec-check     # 平面波の全電界 (定在波 2|sin kz|)
+sh data/sample/hdf5_post_check.sh        "$PWD/bin/ofd" /tmp/h5post-check  # ofd_post -h5 が ofd.out と同じ出力
+sh data/sample/thread_check.sh          "$PWD/bin/ofd" /tmp/thread-check  # -n 1 と -n 4 でログが一致 (OpenMP の競合)
+sh data/sample/decomp_check.sh          "$PWD/bin/ofd_mpi" /tmp/decomp-check  # MPI の分割 (x/y/z/2x2x2) で 1 プロセスと一致
+# メモリ安全 (全サンプル × ofd + ofd_post を ASan で。ビルド方法はスクリプト冒頭)
+sh data/sample/asan_check.sh <asan の ofd> <asan の ofd_post> /tmp/asan-check
 ```
 
 MPI / CUDA を触ったら該当ビルドも通すこと (下記「4 実装」参照)。
@@ -73,7 +81,6 @@ MPI / CUDA を触ったら該当ビルドも通すこと (下記「4 実装」�
 
 現状の意図的な除外 :
 
-- `sol/setupNear.c` — 呼び出し元がなく削除済みグローバル `Fnorm` を参照。全ビルドから除外。
 - `sol/solve.c` — MPI は `mpi/solve.c`、CUDA は `cuda/solve.cu`、CUDA+MPI は
   `cuda_mpi/solve.cu` と対になっている。
 - `mpi/comm_E.c` — E ハロー交換の CPU 実装。CUDA+MPI では E が device 側にあり得るので
@@ -94,6 +101,10 @@ MPI / CUDA を触ったら該当ビルドも通すこと (下記「4 実装」�
   呼ぶ必要がある。現在は**直列ドライバで rank 0 だけが開く**形にしてある
   (書かれるのはすべて rank 0 の値なので並列ドライバを使う理由が無い)。
   → **MPI / CUDA+MPI ビルドに並列 HDF5 は不要**。
+- **TPA は成分の間で E を交換する** (`mpi/solve.c` / `cuda_mpi/solve.cu`)。`updateTpa`
+  は Ex → Ey → Ez の順に減衰し、後の成分は減衰後の前の成分を読む。3 成分を先に
+  まとめて交換していたため境界の隣接値だけ減衰前になり、x に一様でない場で結果が
+  分割に依存していた (`decomp_check.sh` の tpa_half で検出、`updateTpaComp` で修正)。
 - `comm_X/Y/Z` は **H 面しか交換していない**。E の近傍を読む処理を追加する場合は
   `mpi/comm_E.c` の `comm_E_X/Y/Z()` (CUDA+MPI では `cuda_mpi/comm_cuda_E.cu` の
   `comm_cuda_E_X/Y/Z()`) を先に呼ぶこと。
@@ -105,7 +116,8 @@ MPI の検証 :
 ```bash
 cmake -B build-mpi -DCMAKE_BUILD_TYPE=Release -DWITH_CUDA=OFF -DWITH_MPI=ON
 cmake --build build-mpi -j"$(nproc)"
-sh data/sample/tpa_decomp_check.sh "$PWD/bin/ofd_mpi" /tmp/mpi-decomp   # 領域分割不変性
+sh data/sample/tpa_decomp_check.sh "$PWD/bin/ofd_mpi" /tmp/mpi-decomp   # 領域分割不変性 (TPA 平板)
+sh data/sample/decomp_check.sh     "$PWD/bin/ofd_mpi" /tmp/mpi-decomp3d # 同 (3 次元の場 8 サンプル)
 OFD_LAUNCHER="mpirun --oversubscribe -n 2" OFD_ARGS="-p 1 1 2" \
   sh data/sample/tpa_slab_check.sh "$PWD/bin/ofd_mpi" /tmp/mpi-tpa       # 解析解
 ```
@@ -187,6 +199,9 @@ OFD_LAUNCHER="mpirun --oversubscribe -n 2" OFD_ARGS="-p 1 1 2" \
 HDM (既定) で HDF5 スナップショットが device メモリを host から読んで落ちる
 バグを修正した (`snapshot_host_fields`)。`-cpu` / UM では出ないので、GPU 側を
 触ったら実機で HDM のまま一度走らせること。
+TPA の透過率測定 (`cuda*/solve.cu` の `tpaMon`) も同じ種類で、2026-11 に
+`field_at()` で 1 要素を device から写すよう直した (実機未確認)。
+手順と合格基準は README の「実機 GPU での確認手順」。
 
 Windows は vcpkg (`hdf5[core,zlib]:x64-windows-static-md`)。szip は libaec の 429 で
 落ちるため使わない。`build-cuda` は distro の `nvidia-cuda-toolkit` と gcc の組み合わせに

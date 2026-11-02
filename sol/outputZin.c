@@ -80,6 +80,29 @@ void calcPin(void)
 	}
 }
 
+// Zin と反射[dB] から表示用の派生量を求める
+//
+// ログ (_outputZin) と HDF5 (write_input_impedance_data_to_hdf5) の両方が
+// 同じ量を出すので、ここに 1 本化する。以前は同じ式が 2 箇所に書いてあり、
+// 片方だけ直すと **GUI が読む HDF5 とログが食い違う**状態になっていた。
+//
+//   アドミタンス Y = 1/Z   (出力は mS 単位なので 1e3 倍)
+//   反射係数の大きさ |Γ| = 10^(Ref[dB]/20)
+//     (Ref[dB] は calcZin() が 10*log10(|Γ|^2) = 20*log10(|Γ|) で作る)
+//   VSWR = (1 + |Γ|) / (1 - |Γ|)
+//     全反射 (|Γ| = 1) では発散するので 1000 で頭打ちにする
+void zinDerived(d_complex_t zin, double ref_db,
+	double *gin_mS, double *bin_mS, double *vswr)
+{
+	const d_complex_t yin = d_inv(zin);
+	const double gamma = pow(10, ref_db / 20);
+
+	if (gin_mS != NULL) *gin_mS = yin.r * 1e3;
+	if (bin_mS != NULL) *bin_mS = yin.i * 1e3;
+	if (vswr   != NULL) *vswr   = (fabs(1 - gamma) > EPS) ? (1 + gamma) / (1 - gamma) : 1000;
+}
+
+
 static void write_input_impedance_data_to_hdf5()
 {
     hid_t file_id, group_id, dataset_id, dataspace_id, memtype_id;
@@ -96,15 +119,14 @@ static void write_input_impedance_data_to_hdf5()
     for (int ifeed = 0; ifeed < NFeed; ifeed++) {
         for (int ifreq = 0; ifreq < NFreq1; ifreq++) {
             const int id = (ifeed * NFreq1) + ifreq;
-            const d_complex_t yin = d_inv(Zin[id]);
-            const double gamma = pow(10, Ref[id] / 20);
-            const double vswr = (fabs(1 - gamma) > EPS) ? (1 + gamma) / (1 - gamma) : 1000;
+            double gin, bin, vswr;
+            zinDerived(Zin[id], Ref[id], &gin, &bin, &vswr);
             const size_t did = (size_t)ifeed * NFreq1 + ifreq;
             data[did].frequency = Freq1[ifreq];
             data[did].rin = Zin[id].r;
             data[did].xin = Zin[id].i;
-            data[did].gin = yin.r * 1e3;
-            data[did].bin = yin.i * 1e3;
+            data[did].gin = gin;
+            data[did].bin = bin;
             data[did].ref = Ref[id];
             data[did].vswr = vswr;
         }
@@ -177,11 +199,10 @@ static void _outputZin(FILE *fp)
 		fprintf(fp, "  %s\n", "frequency[Hz] Rin[ohm]   Xin[ohm]    Gin[mS]    Bin[mS]    Ref[dB]       VSWR");
 		for (int ifreq = 0; ifreq < NFreq1; ifreq++) {
 			const int id = (ifeed * NFreq1) + ifreq;
-			const d_complex_t yin = d_inv(Zin[id]);
-			const double gamma = pow(10, Ref[id] / 20);
-			const double vswr = (fabs(1 - gamma) > EPS) ? (1 + gamma) / (1 - gamma) : 1000;
+			double gin, bin, vswr;
+			zinDerived(Zin[id], Ref[id], &gin, &bin, &vswr);
 			fprintf(fp, "%13.5e%11.3f%11.3f%11.3f%11.3f%11.3f%11.3f\n",
-				Freq1[ifreq], Zin[id].r, Zin[id].i, yin.r * 1e3, yin.i * 1e3, Ref[id], vswr);
+				Freq1[ifreq], Zin[id].r, Zin[id].i, gin, bin, Ref[id], vswr);
 		}
 	}
 

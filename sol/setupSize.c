@@ -25,14 +25,20 @@ static void idminmax(int n, int _np, int np, int ip, int *min, int *max)
 }
 
 
-void setupSize(int npx, int npy, int npz, int comm_rank)
+// 戻り値 : 0 = 正常 / 1 = 分割数がセル数を超える (呼び出し側で止めること)
+int setupSize(int npx, int npy, int npz, int comm_rank)
 {
 	// too many prosess (MPI)
+	// 以前は表示するだけで続行していたが、分割数がセル数を超えると担当範囲が
+	// 空や領域外 (例: Nz = 2 を 4 分割すると rank 2 は [2,3)) になり、結果が
+	// 黙って変わる (1 プロセスと一致しない) のに normal end で終わっていた。
+	// 全ランクが同じ値で判定するので、呼び出し側は comm_check() で止める。
 	if ((npx > Nx) || (npy > Ny) || (npz > Nz)) {
 		if (comm_rank == 0) {
 			fprintf(stderr, "*** too many processes = %dx%dx%d (limit = %dx%dx%d)\n", npx, npy, npz, Nx, Ny, Nz);
 			fflush(stderr);
 		}
+		return 1;
 	}
 
 	// get block numbers : (Ipx, Ipy, Ipz) (MPI)
@@ -72,6 +78,8 @@ void setupSize(int npx, int npy, int npz, int comm_rank)
 	//printf("%d %d %zd %zd %zd %zd %zd\n", comm_size, comm_rank, Ni, Nj, Nk, N0, NN);
 	assert(NA(iMin - lx, jMin - ly, kMin - lz) == 0);
 	assert(NA(iMax + lx, jMax + ly, kMax + lz) == NN - 1);
+
+	return 0;
 }
 
 

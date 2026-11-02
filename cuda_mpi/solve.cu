@@ -59,6 +59,21 @@ static void snapshot_host_free(void)
 	}
 }
 
+// ── HDM (GPU かつ UM でない) 実行で場の 1 点を host から読む ───────────────
+// Ex..Hz は cudaMalloc した device メモリなので host から直接読めない
+// (HDF5 スナップショットで実際に踏んだ。UM / -cpu では出ない)。TPA の透過率
+// 測定は観測点 1 点だけ読むので、その 1 要素を device からコピーする。
+static double field_at(const real_t *f, int64_t n)
+{
+	if (GPU && !UM) {
+		real_t v = 0;
+		cudaMemcpy(&v, f + n, sizeof(real_t), cudaMemcpyDeviceToHost);
+		return v;
+	}
+	return f[n];
+}
+
+
 void solve(int io, double *tdft, FILE *fp)
 {
     // HDF5ファイルの作成
@@ -209,18 +224,22 @@ void solve(int io, double *tdft, FILE *fp)
         }
 
         // TPA (二光子吸収) 非線形減衰 (cuda/updateTpa.cu)
-        // 領域境界の E ハローを先に交換する : updateTpa は |E|^2 の colocated
-        // 近似のため隣接セルの E 成分を読む (E 更新自体は H しか読まないので
-        // 既存の comm_cuda_X/Y/Z(0) は H しか交換していない)
+        // updateTpa は |E|^2 の colocated 近似のため隣接セルの E 成分を読む
+        // (E 更新自体は H しか読まないので、既存の comm_cuda_X/Y/Z(0) は H しか
+        // 交換していない)。成分は Ex → Ey → Ez の順に減衰し、後の成分は減衰後の
+        // 前の成分を読むので、成分の間で交換する (順序と理由は mpi/solve.c)
         if (NTpa) {
-            if (Npx > 1) comm_cuda_E_X();
             if (Npy > 1) comm_cuda_E_Y();
             if (Npz > 1) comm_cuda_E_Z();
-            updateTpa(t);
+            updateTpaComp(0, t);
+            if (Npx > 1) comm_cuda_E_X();
+            updateTpaComp(1, t);
+            if (Npy > 1) comm_cuda_E_Y();
+            updateTpaComp(2, t);
         }
 
         // TPA 検証用 : 最終 1 周期の全電界振幅を測定 (point を含むプロセスのみ)
-        // (GPU 実行時は E が device 側にあるため、UM でない場合は測定できない)
+        // (HDM では E が device 側にあるので field_at() で 1 要素をコピーして読む)
         if (tpaMon && (itime >= tpaStart)) {
             if (GPU) cudaDeviceSynchronize();
             const int pi = Point[0].i;
@@ -231,15 +250,15 @@ void solve(int io, double *tdft, FILE *fp)
                 double e = 0;
                 if      (Point[0].dir == 'X') {
                     finc(h_Xc[pi], h_Yn[pj], h_Zn[pk], t, Planewave.r0, Planewave.ri, Planewave.ei[0], Planewave.ai, Dt, &fi, &dfi);
-                    e = EX(pi, pj, pk) + fi;
+                    e = field_at(Ex, NA(pi, pj, pk)) + fi;
                 }
                 else if (Point[0].dir == 'Y') {
                     finc(h_Xn[pi], h_Yc[pj], h_Zn[pk], t, Planewave.r0, Planewave.ri, Planewave.ei[1], Planewave.ai, Dt, &fi, &dfi);
-                    e = EY(pi, pj, pk) + fi;
+                    e = field_at(Ey, NA(pi, pj, pk)) + fi;
                 }
                 else if (Point[0].dir == 'Z') {
                     finc(h_Xn[pi], h_Yn[pj], h_Zc[pk], t, Planewave.r0, Planewave.ri, Planewave.ei[2], Planewave.ai, Dt, &fi, &dfi);
-                    e = EZ(pi, pj, pk) + fi;
+                    e = field_at(Ez, NA(pi, pj, pk)) + fi;
                 }
                 tpaEmax = MAX(tpaEmax, fabs(e));
             }

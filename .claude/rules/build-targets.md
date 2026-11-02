@@ -42,6 +42,9 @@ CPU ビルドだけ通って CUDA/MPI がリンクエラーになる。
 確認済みだが、**CI は今も実機を通らない**。HDM (既定) で device メモリを
 host から読む種類のバグ (HDF5 スナップショットで実際に踏んだ) は `-cpu` /
 UM では出ないので、GPU 側を触ったら実機で HDM のまま一度走らせること。
+TPA の透過率測定 (`cuda*/solve.cu` の `tpaMon`) も同じ種類で、2026-11 に
+`field_at()` で 1 要素を device から写すよう直した (実機未確認)。
+手順と合格基準は README の「実機 GPU での確認手順」。
 
 ## 新しい sol/*.c を足すときの選択肢
 
@@ -52,8 +55,6 @@ UM では出ないので、GPU 側を触ったら実機で HDM のまま一度�
 
 ## 現状の意図的な除外
 
-- `sol/setupNear.c` — 呼び出し元がなく、削除済みグローバル `Fnorm` を参照する。
-  CPU (REMOVE_ITEM) でも CUDA (SOURCES2) でも MPI (SOURCES3) でも除外済み。
 - `sol/solve.c` — MPI は `mpi/solve.c`、CUDA は `cuda/solve.cu` と対になっている。
 - `sol/updateTpa.c` — CPU と MPI は対応済み (SOURCES3 に登録)。
   CUDA は `cuda/updateTpa.cu` と対になっている (`CUDA_SOURCES` と
@@ -77,6 +78,10 @@ UM では出ないので、GPU 側を触ったら実機で HDM のまま一度�
   このファイルに書かれるのはすべて rank 0 の値なので、**直列ドライバで
   rank 0 だけが開く**形にして解決済み (`ofd_post` が読む構造は不変)。
   → **MPI ビルドに並列 HDF5 は不要**になった。
+- **TPA は成分の間で E を交換する** (`mpi/solve.c` / `cuda_mpi/solve.cu`)。`updateTpa` は Ex → Ey → Ez の
+  順に減衰し、後の成分は減衰後の前の成分を読む。3 成分を先にまとめて交換して
+  いたため境界の隣接値だけ減衰前になり、x に一様でない場で結果が分割に依存して
+  いた (`decomp_check.sh` の tpa_half で検出、`updateTpaComp` で修正)。
 - `comm_X/Y/Z` は **H 面しか交換していない**。E の近傍を読む処理を追加する
   場合は `mpi/comm_E.c` の `comm_E_X/Y/Z()` を先に呼ぶこと。
 - ログ出力の改行に全角の `¥n` を使わない (`\n`)。`ofd.log` が 1 行に潰れて
@@ -95,6 +100,10 @@ for p in "1 1 1" "1 1 2" "2 1 1" "1 2 1" "2 2 2"; do
     ./bin/ofd_mpi -p $p -n 1 tpa_slab.ofd >/dev/null
   grep -o "TPA: transmission = [0-9.]*" ofd.log | tail -1
 done
+
+# 3 次元に広がる場でも確認する。TPA の平板は x / y に一様なので、x / y 分割の
+# ハロー交換を壊しても透過率が変わらず見逃す (2026-11 の変異試験で判明)
+sh data/sample/decomp_check.sh "$PWD/bin/ofd_mpi" /tmp/decomp
 ```
 
 ## 既存機能に手を入れるとき

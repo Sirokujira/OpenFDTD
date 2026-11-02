@@ -202,6 +202,21 @@ int hdf5_open(int with_timeseries)
 			d[0] = (hsize_t)NGline; d[1] = 2; d[2] = 3;
 			write_dataset(gid, "Gline", 3, d, H5T_NATIVE_DOUBLE, Gline);
 		}
+		/* 線分ごとの材料 id。表示側が材料別に色を変えるのに使う。
+		   id_t はビルド構成で幅が変わる (_ID16 なら unsigned short、
+		   既定は unsigned char) ので、そのまま書くとファイルの型が
+		   ビルドに依存してしまう。必ず int32 に直してから書く。 */
+		if ((NGline > 0) && (MGline != NULL)) {
+			int32_t *buf = (int32_t *)malloc((size_t)NGline * sizeof(int32_t));
+			if (buf != NULL) {
+				for (int64_t n = 0; n < NGline; n++) {
+					buf[n] = (int32_t)MGline[n];
+				}
+				d[0] = (hsize_t)NGline;
+				write_dataset(gid, "MGline", 1, d, H5T_NATIVE_INT32, buf);
+				free(buf);
+			}
+		}
 		H5Gclose(gid);
 	}
 
@@ -397,6 +412,125 @@ void hdf5_write_freqdomain(
 
 	free(buf);
 	H5Gclose(gid);
+
+	/* /post : 後処理 (ofd_post -h5) 用に、ofd.out と同じ値をソルバー内部の
+	   配置 (余白込みの NN) のまま書く。/freqdomain は物理領域 0..N だけだが、
+	   ofd_post の節点補間 NodeH_c は境界の節点で余白 (添字 -1) の H を読むので、
+	   /freqdomain からは境界の値が復元できない */
+	{
+		static const char *name[12] = {
+			"cEx_r", "cEx_i", "cEy_r", "cEy_i", "cEz_r", "cEz_i",
+			"cHx_r", "cHx_i", "cHy_r", "cHy_i", "cHz_r", "cHz_i"};
+		const float *src[12] = {cex_r, cex_i, cey_r, cey_i, cez_r, cez_i,
+		                        chx_r, chx_i, chy_r, chy_i, chz_r, chz_i};
+		hid_t pg = H5Gcreate(h5file, OFD_H5_POST, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+		if (pg >= 0) {
+			hsize_t d2[2], ch[2];
+			d2[0] = (hsize_t)NFreq2;
+			d2[1] = (hsize_t)NN;
+			/* チャンクは 1 周波数ぶん (HDF5 のチャンクは 4 GiB 未満の制限があるので
+			   大きな問題では分ける) */
+			ch[0] = 1;
+			ch[1] = (d2[1] < ((hsize_t)1 << 28)) ? d2[1] : ((hsize_t)1 << 28);
+			for (int b = 0; b < 12; b++) {
+				if (src[b] == NULL) continue;
+				hid_t space = H5Screate_simple(2, d2, NULL);
+				hid_t plist = H5Pcreate(H5P_DATASET_CREATE);
+				H5Pset_chunk(plist, 2, ch);
+				H5Pset_deflate(plist, H5_GZIP_LEVEL);
+				hid_t dset = H5Dcreate(pg, name[b], H5T_NATIVE_FLOAT, space, H5P_DEFAULT, plist, H5P_DEFAULT);
+				if (dset >= 0) {
+					H5Dwrite(dset, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, src[b]);
+					H5Dclose(dset);
+				}
+				H5Pclose(plist);
+				H5Sclose(space);
+			}
+			H5Gclose(pg);
+		}
+	}
+}
+
+/* 給電の構造体 Feed と入力電力 Pin[0] / Pin[1] を /post に追記する。
+   Pin は outputChars() の calcPin() で求まる (ファイルを閉じた後) ので、
+   閉じたファイルを開き直して書く (sol/outputZin.c の input_impedance と同じ方式)。
+   hdf5 = 0 で出力していなければ何もしない */
+void hdf5_write_post_feed(void)
+{
+	if (!Hdf5Output || (NFeed <= 0) || (Feed == NULL)) return;
+
+	/* ファイルが無ければ (書き出しに失敗した等) 黙って何もしない
+	   (H5Fopen は無いファイルでエラースタックを表示する) */
+	FILE *probe = fopen(OFD_H5_FILE, "rb");
+	if (probe == NULL) return;
+	fclose(probe);
+
+	hid_t file = H5Fopen(OFD_H5_FILE, H5F_ACC_RDWR, H5P_DEFAULT);
+	if (file < 0) return;
+	hid_t pg = (H5Lexists(file, OFD_H5_POST, H5P_DEFAULT) > 0)
+		? H5Gopen(file, OFD_H5_POST, H5P_DEFAULT)
+		: H5Gcreate(file, OFD_H5_POST, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+	if (pg < 0) {
+		H5Fclose(file);
+		return;
+	}
+
+	/* feed_t の dir は char なので、型の幅を固定するため int に直した複合型で書く */
+	typedef struct {
+		int dir, i, j, k;
+		double dx, dy, dz, volt, delay, z0;
+	} h5feed_t;
+	h5feed_t *f = (h5feed_t *)malloc((size_t)NFeed * sizeof(h5feed_t));
+	if (f != NULL) {
+		for (int n = 0; n < NFeed; n++) {
+			f[n].dir = Feed[n].dir;
+			f[n].i = Feed[n].i; f[n].j = Feed[n].j; f[n].k = Feed[n].k;
+			f[n].dx = Feed[n].dx; f[n].dy = Feed[n].dy; f[n].dz = Feed[n].dz;
+			f[n].volt = Feed[n].volt; f[n].delay = Feed[n].delay; f[n].z0 = Feed[n].z0;
+		}
+		hid_t t = H5Tcreate(H5T_COMPOUND, sizeof(h5feed_t));
+		H5Tinsert(t, "dir",   HOFFSET(h5feed_t, dir),   H5T_NATIVE_INT);
+		H5Tinsert(t, "i",     HOFFSET(h5feed_t, i),     H5T_NATIVE_INT);
+		H5Tinsert(t, "j",     HOFFSET(h5feed_t, j),     H5T_NATIVE_INT);
+		H5Tinsert(t, "k",     HOFFSET(h5feed_t, k),     H5T_NATIVE_INT);
+		H5Tinsert(t, "dx",    HOFFSET(h5feed_t, dx),    H5T_NATIVE_DOUBLE);
+		H5Tinsert(t, "dy",    HOFFSET(h5feed_t, dy),    H5T_NATIVE_DOUBLE);
+		H5Tinsert(t, "dz",    HOFFSET(h5feed_t, dz),    H5T_NATIVE_DOUBLE);
+		H5Tinsert(t, "volt",  HOFFSET(h5feed_t, volt),  H5T_NATIVE_DOUBLE);
+		H5Tinsert(t, "delay", HOFFSET(h5feed_t, delay), H5T_NATIVE_DOUBLE);
+		H5Tinsert(t, "z0",    HOFFSET(h5feed_t, z0),    H5T_NATIVE_DOUBLE);
+		hsize_t d = (hsize_t)NFeed;
+		hid_t space = H5Screate_simple(1, &d, NULL);
+		if (H5Lexists(pg, "Feed", H5P_DEFAULT) <= 0) {
+			hid_t dset = H5Dcreate(pg, "Feed", t, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+			if (dset >= 0) {
+				H5Dwrite(dset, t, H5S_ALL, H5S_ALL, H5P_DEFAULT, f);
+				H5Dclose(dset);
+			}
+		}
+		H5Sclose(space);
+		H5Tclose(t);
+		free(f);
+	}
+
+	/* Pin[0] / Pin[1] : {NFeed * NFreq2} (calcPin が求めていれば) */
+	if ((NFreq2 > 0) && (Pin[0] != NULL) && (Pin[1] != NULL)) {
+		hsize_t d = (hsize_t)NFeed * (hsize_t)NFreq2;
+		const char *nm[2] = {"Pin0", "Pin1"};
+		for (int m = 0; m < 2; m++) {
+			if (H5Lexists(pg, nm[m], H5P_DEFAULT) > 0) continue;
+			hid_t space = H5Screate_simple(1, &d, NULL);
+			hid_t dset = H5Dcreate(pg, nm[m], H5T_NATIVE_DOUBLE, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+			if (dset >= 0) {
+				H5Dwrite(dset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, Pin[m]);
+				H5Dclose(dset);
+			}
+			H5Sclose(space);
+		}
+	}
+
+	H5Gclose(pg);
+	H5Fclose(file);
 }
 
 void hdf5_write_loss(const double *ploss)
@@ -474,6 +608,14 @@ void hdf5_close(void)
 	hid_t gid;
 
 	if (h5file < 0) return;
+
+	/* スナップショットの詰め替えバッファを解放する。大きさは最初の
+	   hdf5_snapshot_begin() の格子で決まるので、残しておくと次のファイルを
+	   別の格子で書いたときにあふれる (ソルバーは 1 プロセスで 1 回しか書かないが、
+	   ユニットテストは格子を変えて何度も書く) */
+	free(snap_e);
+	free(snap_h);
+	snap_e = snap_h = NULL;
 
 	/* /timeseries の追記データセットを閉じる */
 	if (ts_itime >= 0) { H5Dclose(ts_itime); ts_itime = -1; }

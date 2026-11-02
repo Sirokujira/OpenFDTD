@@ -59,6 +59,32 @@ jobs:
       - name: Validation test — TPA slab
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-tpa
 
+      # PML (abc = 1) : 小さい領域 + PML を大きい参照領域と時間ゲート付きで比べ、
+      # 境界の反射が各観測点のピークの 2.5% 以下であること (Mur は 3〜8%)。
+      # 係数の細かい誤りは tests/test_pml.c が受け持つ
+      - name: Validation test — PML reflection
+        run: sh data/sample/pml_reflection_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-pml
+
+      # 遠方界の利得 : 半波長ダイポールで放射電力 = 受け入れた電力 (∮G dΩ = 4π)、
+      # 不整合損込みで 4π(1-|Γ|^2)、正面 2.15 dBi (根拠は data/sample/dipole_gain.ofd)
+      - name: Validation test — dipole gain
+        run: sh data/sample/dipole_gain_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-gain
+
+      # 平面波の全電界 : 完全導体の平板の前の定在波 |E| = 2|sin kz|、散乱界 |Es| = 1
+      # (ofd_post が足す入射界の位相・向き。根拠は data/sample/pec_plate.ofd)
+      - name: Validation test — plane wave on PEC plate
+        run: sh data/sample/pec_plate_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-pec
+
+      # 後処理を HDF5 から読む経路 (ofd_post -h5) : ofd.out から読んだのと出力が一致すること
+      # (/post の余白込み近傍界 DFT・給電・入力電力。data/sample/hdf5_post_check.sh)
+      - name: Validation test — post processing from HDF5
+        run: sh data/sample/hdf5_post_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-h5post
+
+      # OpenMP のスレッド数で結果が変わらないこと (-n 1 と -n 4 でログが一致。
+      # 並列ループのデータ競合を検出する。data/sample/thread_check.sh)
+      - name: Validation test — thread count invariance
+        run: sh data/sample/thread_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-thread
+
       # 熱解析レイヤ : 発熱密度がセル毎の材料を参照していることの検証
       # (熱解析レイヤは CPU 版のみなので build-mpi / build-cuda では実行しない)
       - name: Validation test — thermal per-cell material
@@ -82,6 +108,22 @@ jobs:
       # いなかった (sol/update*.c の 12 関数 + sol/setup_vector.c が未検証)。
       - name: Validation test — vector / no-vector consistency
         run: sh data/sample/vector_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-vector
+
+      # AddressSanitizer : 配列外読み・解放後使用・リークは結果がたまたま正しければ
+      # normal end で終わるので、他の検査では見つからない (この方法で境界節点の
+      # 配列外読み・load / ofd_post のリークを見つけている)。UndefinedBehaviorSanitizer
+      # も同じビルドに入れる (符号付き整数の桁あふれ・NULL への fwrite など。
+      # -fno-sanitize-recover で最初の報告で止める)。出力先を bin/ と分けて、
+      # 上の通常ビルド (アーティファクト) を上書きしない
+      - name: AddressSanitizer + UBSan — unit tests and all samples (ofd + ofd_post)
+        run: |
+          cmake -B build-asan -DCMAKE_BUILD_TYPE=Debug -DWITH_CUDA=OFF -DWITH_MPI=OFF \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
+            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="$RUNNER_TEMP/asan/bin"
+          cmake --build build-asan --target ofd ofd_post ofd_tests -j"$(nproc)"
+          (cd "$RUNNER_TEMP" && "$RUNNER_TEMP/asan/bin/ofd_tests")
+          sh data/sample/asan_check.sh "$RUNNER_TEMP/asan/bin/ofd" "$RUNNER_TEMP/asan/bin/ofd_post" /tmp/asan-samples
 
       - name: Upload binaries (artifact)
         uses: actions/upload-artifact@v4
@@ -162,10 +204,40 @@ jobs:
       - name: Validation test — TPA slab
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-tpa
 
+      # PML (abc = 1) : 小さい領域 + PML を大きい参照領域と時間ゲート付きで比べ、
+      # 境界の反射が各観測点のピークの 2.5% 以下であること (Mur は 3〜8%)。
+      # 係数の細かい誤りは tests/test_pml.c が受け持つ
+      - name: Validation test — PML reflection
+        run: sh data/sample/pml_reflection_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-pml
+
+      # 遠方界の利得 : 半波長ダイポールで放射電力 = 受け入れた電力 (∮G dΩ = 4π)、
+      # 不整合損込みで 4π(1-|Γ|^2)、正面 2.15 dBi (根拠は data/sample/dipole_gain.ofd)
+      - name: Validation test — dipole gain
+        run: sh data/sample/dipole_gain_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-gain
+
+      # 平面波の全電界 : 完全導体の平板の前の定在波 |E| = 2|sin kz|、散乱界 |Es| = 1
+      # (ofd_post が足す入射界の位相・向き。根拠は data/sample/pec_plate.ofd)
+      - name: Validation test — plane wave on PEC plate
+        run: sh data/sample/pec_plate_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-pec
+
+      # 後処理を HDF5 から読む経路 (ofd_post -h5) : ofd.out から読んだのと出力が一致すること
+      # (/post の余白込み近傍界 DFT・給電・入力電力。data/sample/hdf5_post_check.sh)
+      - name: Validation test — post processing from HDF5
+        run: sh data/sample/hdf5_post_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-h5post
+
+      # OpenMP のスレッド数で結果が変わらないこと (-n 1 と -n 4 でログが一致。
+      # 並列ループのデータ競合を検出する。data/sample/thread_check.sh)
+      - name: Validation test — thread count invariance
+        run: sh data/sample/thread_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-thread
+
       # 熱解析レイヤ : 発熱密度がセル毎の材料を参照していることの検証
       # (熱解析レイヤは CPU 版のみなので build-mpi / build-cuda では実行しない)
       - name: Validation test — thermal per-cell material
         run: sh data/sample/thermal_material_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-thermal
+
+      # HDF5 の構成 (build-cpu と同じ判定)。h5ls が無ければ ofd_h5check に落ちる
+      - name: Validation test — HDF5 layout
+        run: sh data/sample/hdf5_layout_check.sh "$GITHUB_WORKSPACE/bin/ofd" /tmp/smoke-h5layout
 
       # ベクトル化更新経路 (-vector) と通常経路の一致 (build-cpu と同じ判定)
       - name: Validation test — vector / no-vector consistency
@@ -282,6 +354,47 @@ jobs:
         shell: bash
         run: sh data/sample/vector_check.sh "$GITHUB_WORKSPACE/bin/ofd.exe" /tmp/smoke-vector
 
+      # HDF5 の構成。**ここが今まで Windows と macOS で完全に空白だった** —
+      # vcpkg の静的ビルドには h5ls が付いてこないので検査を飛ばしていて、
+      # 表示側 (OpenFDTD-X) が読むデータが Windows だけ欠けていても
+      # ソルバーは normal end で終わるため気付けなかった。
+      # tools/h5check.c (ofd_h5check) を使えばツール類が無くても検査できる。
+      - name: Build ofd_h5check (HDF5 layout checker)
+        run: cmake --build build --target ofd_h5check
+
+      - name: Validation test — HDF5 layout
+        shell: bash
+        run: sh data/sample/hdf5_layout_check.sh "$GITHUB_WORKSPACE/bin/ofd.exe" /tmp/smoke-h5layout
+
+      # PML の反射 (build-cpu と同じ判定)。時系列は ofd_h5check -d で読む
+      - name: Validation test — PML reflection
+        shell: bash
+        run: sh data/sample/pml_reflection_check.sh "$GITHUB_WORKSPACE/bin/ofd.exe" /tmp/smoke-pml
+
+      # 遠方界の利得 : 半波長ダイポールで放射電力 = 受け入れた電力 (∮G dΩ = 4π)、
+      # 不整合損込みで 4π(1-|Γ|^2)、正面 2.15 dBi (根拠は data/sample/dipole_gain.ofd)
+      - name: Validation test — dipole gain
+        shell: bash
+        run: sh data/sample/dipole_gain_check.sh "$GITHUB_WORKSPACE/bin/ofd.exe" /tmp/smoke-gain
+
+      # 平面波の全電界 : 完全導体の平板の前の定在波 |E| = 2|sin kz|、散乱界 |Es| = 1
+      # (ofd_post が足す入射界の位相・向き。根拠は data/sample/pec_plate.ofd)
+      - name: Validation test — plane wave on PEC plate
+        shell: bash
+        run: sh data/sample/pec_plate_check.sh "$GITHUB_WORKSPACE/bin/ofd.exe" /tmp/smoke-pec
+
+      # 後処理を HDF5 から読む経路 (ofd_post -h5) : ofd.out から読んだのと出力が一致すること
+      # (/post の余白込み近傍界 DFT・給電・入力電力。data/sample/hdf5_post_check.sh)
+      - name: Validation test — post processing from HDF5
+        shell: bash
+        run: sh data/sample/hdf5_post_check.sh "$GITHUB_WORKSPACE/bin/ofd.exe" /tmp/smoke-h5post
+
+      # OpenMP のスレッド数で結果が変わらないこと (-n 1 と -n 4 でログが一致。
+      # 並列ループのデータ競合を検出する。data/sample/thread_check.sh)
+      - name: Validation test — thread count invariance
+        shell: bash
+        run: sh data/sample/thread_check.sh "$GITHUB_WORKSPACE/bin/ofd.exe" /tmp/smoke-thread
+
       - name: Upload binaries (artifact)
         uses: actions/upload-artifact@v4
         with:
@@ -358,6 +471,12 @@ jobs:
       - name: Validation test — TPA decomposition invariance
         run: sh data/sample/tpa_decomp_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-decomp
 
+      # 3 次元に広がる場 (給電・平面波・PML・観測点・負荷・周期境界・x に一様でない TPA)
+      # でも分割によらずログと後処理の出力が 1 プロセスと一致すること。TPA の平板は
+      # x / y に一様なので x / y 分割のハロー交換の誤りを見逃す (data/sample/decomp_check.sh)
+      - name: Validation test — decomposition invariance (3D fields)
+        run: sh data/sample/decomp_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-decomp3d
+
       # ノード間 (PC 跨ぎ) MPI 相当の経路 : --mca btl tcp,self で共有メモリ転送を
       # 無効化し、物理的に別ノードへ送るときと同じ経路を単一ランナーで通す。
       # スナップショットの集約 (comm_snapshot) は毎出力ステップで全ランクから
@@ -371,6 +490,67 @@ jobs:
           OFD_LAUNCHER: mpirun --oversubscribe -n 2
           OFD_ARGS: -p 1 1 2
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-tpa
+
+      # HDF5 の構成。MPI 版は rank 0 だけが書くので、分割しても
+      # 表示側の契約が変わらないことを確かめる
+      - name: Validation test — HDF5 layout (2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -p 1 1 2
+        run: sh data/sample/hdf5_layout_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-h5layout
+
+      # 分割数がセル数を超える実行はエラーで止まること。以前は表示だけして
+      # 続行し、担当範囲が壊れて結果が黙って変わるのに normal end で終わっていた
+      - name: Validation test — too many processes is an error
+        run: |
+          mkdir -p /tmp/mpi-toomany && cd /tmp/mpi-toomany
+          printf '%s\n' "OpenFDTD 4 2" "xmesh = -0.05 10 0.05" "ymesh = -0.05 10 0.05" \
+            "zmesh = -0.01 2 0.01" "feed = X 0.005 0 0 1 0 50" "frequency1 = 3e9 3e9 0" \
+            "solver = 20 10 0" "end" > t.ofd
+          if mpirun --oversubscribe -n 3 "$GITHUB_WORKSPACE/bin/ofd_mpi" -p 1 1 3 -n 1 t.ofd; then
+            echo "*** 3 processes on Nz = 2 should fail"; exit 1
+          fi
+          echo "too many processes rejected as expected"
+
+      # PML の反射 (CPU 版と同じスクリプト・同じ許容値)。z 方向に分割するので
+      # PML 層がランク境界をまたがない面 (z±) と、またぐ面 (x±, y±) の両方がある
+      - name: Validation test — PML reflection (2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -p 1 1 2
+        run: sh data/sample/pml_reflection_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-pml
+
+      # 遠方界の利得 : 半波長ダイポールで放射電力 = 受け入れた電力 (∮G dΩ = 4π)、
+      # 不整合損込みで 4π(1-|Γ|^2)、正面 2.15 dBi (根拠は data/sample/dipole_gain.ofd)
+      - name: Validation test — dipole gain (2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -p 1 1 2
+        run: sh data/sample/dipole_gain_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-gain
+
+      # 平面波の全電界 : 完全導体の平板の前の定在波 |E| = 2|sin kz|、散乱界 |Es| = 1
+      # (ofd_post が足す入射界の位相・向き。根拠は data/sample/pec_plate.ofd)
+      - name: Validation test — plane wave on PEC plate (2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -p 1 1 2
+        run: sh data/sample/pec_plate_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-pec
+
+      # 後処理を HDF5 から読む経路 (ofd_post -h5) : ofd.out から読んだのと出力が一致すること
+      # (/post の余白込み近傍界 DFT・給電・入力電力。data/sample/hdf5_post_check.sh)
+      - name: Validation test — post processing from HDF5 (2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -p 1 1 2
+        run: sh data/sample/hdf5_post_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-h5post
+
+      # OpenMP のスレッド数で結果が変わらないこと (2 プロセス × -n 1 / -n 4。
+      # MPI の分割と sol/ の OpenMP ループの組み合わせ。data/sample/thread_check.sh)
+      - name: Validation test — thread count invariance (2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -p 1 1 2
+        run: sh data/sample/thread_check.sh "$GITHUB_WORKSPACE/bin/ofd_mpi" /tmp/mpi-thread
 
       # ベクトル化更新経路 (-vector) は領域分割と組み合わせたときも
       # 通常経路と一致すること (係数配列 K1/K2 の展開範囲は
@@ -421,12 +601,49 @@ jobs:
       - name: Configure / build (CUDA)
         run: |
           cmake -B build-cuda -DCMAKE_BUILD_TYPE=Release -DWITH_CUDA=ON -DWITH_MPI=OFF
-          cmake --build build-cuda --target ofd_cuda -j"$(nproc)"
+          cmake --build build-cuda --target ofd_cuda ofd_h5check ofd_post -j"$(nproc)"
 
       - name: Validation test — TPA slab (ofd_cuda, CPU execution mode)
         env:
           OFD_ARGS: -cpu
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda" /tmp/cuda-tpa
+
+      # HDF5 の構成。CUDA 版はデバイスからホストへ写してから書くので、
+      # 書き出しの経路が CPU 版と別になる (実機 GPU で落ちる不具合が
+      # 過去にあった)。-cpu 実行でも契約が変わらないことを確かめる
+      - name: Validation test — HDF5 layout (ofd_cuda, CPU execution mode)
+        env:
+          OFD_ARGS: -cpu
+        run: sh data/sample/hdf5_layout_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda" /tmp/cuda-h5layout
+
+      # PML の反射。CUDA 版の PML は cuda/pml*.cu の別実装 (-cpu 実行は
+      # 同じファイルのホスト側経路を通る) なので、ここで物理を確かめる
+      # (ofd_h5check は上で一緒にビルド)
+      - name: Validation test — PML reflection (ofd_cuda, CPU execution mode)
+        env:
+          OFD_ARGS: -cpu
+        run: sh data/sample/pml_reflection_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda" /tmp/cuda-pml
+
+      # 遠方界の利得 : 半波長ダイポールで放射電力 = 受け入れた電力 (∮G dΩ = 4π)、
+      # 不整合損込みで 4π(1-|Γ|^2)、正面 2.15 dBi (根拠は data/sample/dipole_gain.ofd)
+      - name: Validation test — dipole gain (ofd_cuda, CPU execution mode)
+        env:
+          OFD_ARGS: -cpu
+        run: sh data/sample/dipole_gain_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda" /tmp/cuda-gain
+
+      # 平面波の全電界 : 完全導体の平板の前の定在波 |E| = 2|sin kz|、散乱界 |Es| = 1
+      # (ofd_post が足す入射界の位相・向き。根拠は data/sample/pec_plate.ofd)
+      - name: Validation test — plane wave on PEC plate (ofd_cuda, CPU execution mode)
+        env:
+          OFD_ARGS: -cpu
+        run: sh data/sample/pec_plate_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda" /tmp/cuda-pec
+
+      # 後処理を HDF5 から読む経路 (ofd_post -h5) : ofd.out から読んだのと出力が一致すること
+      # (/post の余白込み近傍界 DFT・給電・入力電力。data/sample/hdf5_post_check.sh)
+      - name: Validation test — post processing from HDF5 (ofd_cuda, CPU execution mode)
+        env:
+          OFD_ARGS: -cpu
+        run: sh data/sample/hdf5_post_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda" /tmp/cuda-h5post
 
       # CUDA 版も -vector を受け付ける (cuda/update*.cu が VECTOR を見て
       # 係数配列と材料 ID 参照を切り替える)。-cpu 実行なのでカーネル起動
@@ -444,6 +661,13 @@ jobs:
       - name: Validation test — TPA decomposition invariance (ofd_cuda_mpi)
         run: sh data/sample/tpa_decomp_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-decomp -cpu
 
+      - name: Validation test — decomposition invariance, 3D fields (ofd_cuda_mpi)
+        env:
+          OFD_ARGS: -cpu
+          # CUDA 版は収束履歴の平均値を単精度で足すので、分割で相対 1e-6 程度動く
+          CONV_TOL: 1e-4
+        run: sh data/sample/decomp_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-decomp3d
+
       - name: Validation test — MPI network path (ofd_cuda_mpi, tcp btl)
         run: sh data/sample/mpi_network_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-network -cpu
 
@@ -452,6 +676,36 @@ jobs:
           OFD_LAUNCHER: mpirun --oversubscribe -n 2
           OFD_ARGS: -cpu -p 1 1 2
         run: sh data/sample/tpa_slab_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-tpa
+
+      - name: Validation test — PML reflection (ofd_cuda_mpi, 2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -cpu -p 1 1 2
+        run: sh data/sample/pml_reflection_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-pml
+
+      # 遠方界の利得 : 半波長ダイポールで放射電力 = 受け入れた電力 (∮G dΩ = 4π)、
+      # 不整合損込みで 4π(1-|Γ|^2)、正面 2.15 dBi (根拠は data/sample/dipole_gain.ofd)
+      - name: Validation test — dipole gain (ofd_cuda_mpi, 2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -cpu -p 1 1 2
+        run: sh data/sample/dipole_gain_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-gain
+
+      # 平面波の全電界 : 完全導体の平板の前の定在波 |E| = 2|sin kz|、散乱界 |Es| = 1
+      # (ofd_post が足す入射界の位相・向き。根拠は data/sample/pec_plate.ofd)
+      - name: Validation test — plane wave on PEC plate (ofd_cuda_mpi, 2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -cpu -p 1 1 2
+        run: sh data/sample/pec_plate_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-pec
+
+      # 後処理を HDF5 から読む経路 (ofd_post -h5) : ofd.out から読んだのと出力が一致すること
+      # (/post の余白込み近傍界 DFT・給電・入力電力。data/sample/hdf5_post_check.sh)
+      - name: Validation test — post processing from HDF5 (ofd_cuda_mpi, 2 processes)
+        env:
+          OFD_LAUNCHER: mpirun --oversubscribe -n 2
+          OFD_ARGS: -cpu -p 1 1 2
+        run: sh data/sample/hdf5_post_check.sh "$GITHUB_WORKSPACE/bin/ofd_cuda_mpi" /tmp/cuda-mpi-h5post
 
       - name: Upload logs on failure
         if: failure()

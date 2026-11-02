@@ -87,7 +87,9 @@ int main(int argc, char *argv[])
 	}
 
 	// setup
-	setupSize(Npx, Npy, Npz, commRank);
+	// 分割数がセル数を超えると担当範囲が壊れて結果が黙って変わるので止める
+	ierr = setupSize(Npx, Npy, Npz, commRank);
+	comm_check(ierr, 0, prompt);
 	setupABCsize();
 	memalloc1();
 	memalloc2();

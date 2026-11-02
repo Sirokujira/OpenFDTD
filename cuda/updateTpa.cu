@@ -167,10 +167,11 @@ static void updateTpaEz_gpu(
 }
 
 
-// cpu (GPU = 0 のとき)
-static void updateTpa_cpu(double cf, real_t t)
+// cpu (GPU = 0 のとき)。comp = 0/1/2 : Ex/Ey/Ez
+static void updateTpa_cpu(int comp, double cf, real_t t)
 {
 	int i;
+	if (comp == 0) {
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
@@ -181,7 +182,8 @@ static void updateTpa_cpu(double cf, real_t t)
 	}
 	}
 	}
-
+	}
+	else if (comp == 1) {
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
@@ -192,7 +194,8 @@ static void updateTpa_cpu(double cf, real_t t)
 	}
 	}
 	}
-
+	}
+	else if (comp == 2) {
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
@@ -200,6 +203,7 @@ static void updateTpa_cpu(double cf, real_t t)
 	for (int j = jMin; j <= jMax; j++) {
 	for (int k = kMin; k <  kMax; k++) {
 		updateTpaEz_(i, j, k, Ez, Ex, Ey, iEz, TpaBeta, cf, t, h_Xn, h_Yn, h_Zc, &h_Param);
+	}
 	}
 	}
 	}
@@ -226,8 +230,10 @@ void setupTpa(void)
 }
 
 
-// E 更新後に呼ぶ (t は E の時刻 = (itime+1)*Dt)
-void updateTpa(double t)
+// 1 成分だけ減衰する (comp = 0/1/2 : Ex/Ey/Ez)。t は E の時刻 = (itime+1)*Dt
+// 後の成分は減衰後の前の成分を読むので、CUDA+MPI では成分の間で隣のランクの
+// 値を交換する (cuda_mpi/solve.cu。理由は sol/updateTpa.c の updateTpaComp)
+void updateTpaComp(int comp, double t)
 {
 	if ((NTpa <= 0) || (TpaBeta == NULL)) return;
 
@@ -237,30 +243,43 @@ void updateTpa(double t)
 	if (GPU) {
 		cudaMemcpyToSymbol(d_Param, &h_Param, sizeof(param_t));
 
-		dim3 gridEx(
-			CEIL(kMax - kMin + 1, updateBlock.x),
-			CEIL(jMax - jMin + 1, updateBlock.y),
-			CEIL(iMax - iMin + 0, updateBlock.z));
-		updateTpaEx_gpu<<<gridEx, updateBlock>>>(
-			Ex, Ey, Ez, d_iEx, d_TpaBeta, cf, (real_t)t, d_Xc, d_Yn, d_Zn);
-
-		dim3 gridEy(
-			CEIL(kMax - kMin + 1, updateBlock.x),
-			CEIL(jMax - jMin + 0, updateBlock.y),
-			CEIL(iMax - iMin + 1, updateBlock.z));
-		updateTpaEy_gpu<<<gridEy, updateBlock>>>(
-			Ey, Ex, Ez, d_iEy, d_TpaBeta, cf, (real_t)t, d_Xn, d_Yc, d_Zn);
-
-		dim3 gridEz(
-			CEIL(kMax - kMin + 0, updateBlock.x),
-			CEIL(jMax - jMin + 1, updateBlock.y),
-			CEIL(iMax - iMin + 1, updateBlock.z));
-		updateTpaEz_gpu<<<gridEz, updateBlock>>>(
-			Ez, Ex, Ey, d_iEz, d_TpaBeta, cf, (real_t)t, d_Xn, d_Yn, d_Zc);
+		if (comp == 0) {
+			dim3 gridEx(
+				CEIL(kMax - kMin + 1, updateBlock.x),
+				CEIL(jMax - jMin + 1, updateBlock.y),
+				CEIL(iMax - iMin + 0, updateBlock.z));
+			updateTpaEx_gpu<<<gridEx, updateBlock>>>(
+				Ex, Ey, Ez, d_iEx, d_TpaBeta, cf, (real_t)t, d_Xc, d_Yn, d_Zn);
+		}
+		else if (comp == 1) {
+			dim3 gridEy(
+				CEIL(kMax - kMin + 1, updateBlock.x),
+				CEIL(jMax - jMin + 0, updateBlock.y),
+				CEIL(iMax - iMin + 1, updateBlock.z));
+			updateTpaEy_gpu<<<gridEy, updateBlock>>>(
+				Ey, Ex, Ez, d_iEy, d_TpaBeta, cf, (real_t)t, d_Xn, d_Yc, d_Zn);
+		}
+		else if (comp == 2) {
+			dim3 gridEz(
+				CEIL(kMax - kMin + 0, updateBlock.x),
+				CEIL(jMax - jMin + 1, updateBlock.y),
+				CEIL(iMax - iMin + 1, updateBlock.z));
+			updateTpaEz_gpu<<<gridEz, updateBlock>>>(
+				Ez, Ex, Ey, d_iEz, d_TpaBeta, cf, (real_t)t, d_Xn, d_Yn, d_Zc);
+		}
 
 		if (UM) cudaDeviceSynchronize();
 	}
 	else {
-		updateTpa_cpu(cf, (real_t)t);
+		updateTpa_cpu(comp, cf, (real_t)t);
 	}
+}
+
+
+// E 更新後に呼ぶ (t は E の時刻 = (itime+1)*Dt)
+void updateTpa(double t)
+{
+	updateTpaComp(0, t);
+	updateTpaComp(1, t);
+	updateTpaComp(2, t);
 }

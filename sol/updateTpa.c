@@ -170,15 +170,30 @@ static void updateTpaEz(double t, double cf)
 }
 
 
-// E 更新後に呼ぶ (t は E の時刻 = (itime+1)*Dt)
-void updateTpa(double t)
+// 1 成分だけ減衰する (comp = 0/1/2 : Ex/Ey/Ez)。t は E の時刻 = (itime+1)*Dt
+//
+// 成分は Ex → Ey → Ez の順に減衰し、後の成分の |E|^2 は減衰後の前の成分を読む
+// (Ey は Ex を、Ez は Ex と Ey を)。MPI ではこの順序を領域境界でも保つため、
+// 成分の間で隣のランクの値を交換する (mpi/solve.c)。交換を 1 回にまとめると
+// 境界の隣接値だけ減衰前になり、結果が領域分割に依存する
+// (data/sample/decomp_check.sh の tpa_half で検出)。
+void updateTpaComp(int comp, double t)
 {
 	if ((NTpa <= 0) || (TpaBeta == NULL)) return;
 
 	// γ = (2/3) β ε0 c^2 Δt |E|^2 の |E|^2 を除く係数 (導出は冒頭コメント)
 	const double cf = (2.0 / 3.0) * EPS0 * C * C * Dt;
 
-	updateTpaEx(t, cf);
-	updateTpaEy(t, cf);
-	updateTpaEz(t, cf);
+	if      (comp == 0) updateTpaEx(t, cf);
+	else if (comp == 1) updateTpaEy(t, cf);
+	else if (comp == 2) updateTpaEz(t, cf);
+}
+
+
+// E 更新後に呼ぶ (t は E の時刻 = (itime+1)*Dt)
+void updateTpa(double t)
+{
+	updateTpaComp(0, t);
+	updateTpaComp(1, t);
+	updateTpaComp(2, t);
 }

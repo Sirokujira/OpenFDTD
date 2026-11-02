@@ -55,7 +55,7 @@ GUI フロントエンド [OpenFDTD-X](https://github.com/Sirokujira/OpenFDTD-X)
 
 | グループ | 内容 | 用途 |
 |---|---|---|
-| `/geometry` | `Xn/Yn/Zn` (節点座標), `Xc/Yc/Zc`, `Gline` (形状の線分) | 格子・構造の描画 |
+| `/geometry` | `Xn/Yn/Zn` (節点座標), `Xc/Yc/Zc`, `Gline` (形状の線分), `MGline` (線分ごとの材料 id) | 格子・構造の描画 (材料別の色分け) |
 | `/timeseries` | `E`/`H` {nsnap, Nx+1, Ny+1, Nz+1, 3} の**瞬時値**, `time`/`time_H`/`itime` | 時間領域アニメーション |
 | `/freqdomain` | `E`/`H` {NFreq2, Nx+1, Ny+1, Nz+1, 3, 2} の複素振幅, `freq` | 振幅・位相の分布図 |
 | `/loss` | `P_loss` {NFreq2, Nx+1, Ny+1, Nz+1}（入射振幅 1 あたりの相対量）| 発熱・損失分布 |
@@ -87,6 +87,38 @@ hdf5 = <output> [interval]
 (dipole で `hdf5 = 1 200` にすると 12 枚 → 3 枚、5.2MB → 1.6MB)。
 `interval` は瞬時値を出せるのが `solver` の `nout` ごとなので、
 その倍数に切り上げられます。
+
+#### 構成の検査 (`hdf5_layout_check.sh`)
+
+書き手 (`sol/outputHdf5.c`) と読み手 (契約 `include/ofd_hdf5.h` /
+`post/readhdf5.c`) でパスがずれると、実行は `normal end` で終わるのに
+**表示だけ出ない**形で静かに壊れます。CI の 5 ジョブすべてで検査します。
+
+```sh
+sh data/sample/hdf5_layout_check.sh /path/to/bin/ofd /tmp/h5layout
+```
+
+検査の実体は 2 通りで、環境に応じて自動で選ばれます。
+
+| 方法 | 使う条件 |
+|---|---|
+| `h5ls` | `hdf5-tools` が入っている (Linux / macOS) |
+| `ofd_h5check` | 入っていない場合の代替 (`tools/h5check.c`) |
+
+`ofd_h5check` はソルバーと同じ HDF5 ライブラリをリンクするだけの小さな
+道具です。Windows の CI は vcpkg の静的ビルド
+(`hdf5[core,zlib]:x64-windows-static-md`) を使うのでツール類が PATH に
+来ず、**以前は Windows と macOS で HDF5 の中身がまったく検証されて
+いませんでした**。どちらも無い場合は検査を飛ばさずエラーで止めます。
+
+```sh
+cmake --build build --target ofd_h5check   # 必要ならこれでビルドする
+```
+
+`tools/` に置いてあるのは意図的です。`sol/` に .c を足すと CPU ビルド
+(`file(GLOB sol/*.c)`) にだけ入り、手書きリストの CUDA (`SOURCES2`) と
+MPI (`SOURCES3`) が静かにリンクエラーになります
+(`.claude/rules/build-targets.md`)。
 
 #### 実装ごとの対応状況
 
@@ -272,6 +304,134 @@ OFD_ARGS="-cpu" sh data/sample/vector_check.sh /path/to/bin/ofd_cuda /tmp/vector
 意図的な取り違えを入れて、**24 通りすべてがこの検証で NG になる**ことを
 確認しています (追加サンプルを外すと 24 通りとも素通りします)。
 
+### PML 吸収境界の検証
+
+`abc = 1 L M R0` の PML が実際に反射を抑えていることを、時間ゲート付きの
+参照解比較で確かめます (`data/sample/pml_reflection.ofd` +
+`data/sample/pml_reflection_check.sh`)。
+
+```sh
+sh data/sample/pml_reflection_check.sh /path/to/bin/ofd /tmp/pml
+
+# MPI / CUDA にも同じスクリプトを掛けられる
+OFD_LAUNCHER="mpirun -n 2" OFD_ARGS="-p 1 1 2" \
+  sh data/sample/pml_reflection_check.sh /path/to/bin/ofd_mpi /tmp/pml-mpi
+OFD_ARGS="-cpu" sh data/sample/pml_reflection_check.sh /path/to/bin/ofd_cuda /tmp/pml-cuda
+```
+
+一辺 24 セル + PML 8 層の領域と、同じセル幅で一辺 104 セルに広げた参照
+(Mur) を走らせ、参照の境界反射が観測点へ戻る前 (150 ステップ) までの
+観測点の時系列 (HDF5 の `/metadata/VPoint`) の差を比べます。判定は各点で
+`max|V_pml - V_ref| / max|V_ref| <= 0.025`。実測は PML 0.010〜0.017、
+同じ大きさの Mur-1st は 0.032〜0.080 です。時系列はソルバーと一緒に
+ビルドされる `ofd_h5check -d` で読むので、h5dump の無い Windows / macOS
+でも動きます。
+
+この判定が捕まえるのは符号の誤り (発散) や損失の勾配の欠落のような
+大きな壊れ方です。正常な PML でも角の領域と近傍界で 1% 程度の差が残る
+ため、損失分布の添字 ±1 や σmax の定数倍といった細かい誤りは埋もれます。
+そちらはユニットテスト `tests/test_pml.c` が式の単位で検出します
+(理論反射率 `R(0) = exp(-2∫σ dx)` が R0 に戻ること、6 成分の分割界の
+更新式、境界材料の引き継ぎ)。
+
+なお PBC を指定すると PML は Mur-1st に置き換えられます
+(`sol/input_data.c`)。
+
+### 遠方界の利得の検証
+
+ofd_post が出す利得 (`far1d.log` / `far2d.log` の E-abs[dB]) は、給電の入力電力
+`Pin`、正規化係数 `farfactor`、等価面の電磁流、遠方界の積分をつないだ量です。
+どこかの係数が違っても dB の値がずれるだけで正常に終わるので、損失の無い
+半波長ダイポールについて、コードとは独立に決まる量で判定します
+(`data/sample/dipole_gain.ofd` + `data/sample/dipole_gain_check.sh`)。
+
+```sh
+sh data/sample/dipole_gain_check.sh /path/to/bin/ofd /tmp/gain
+
+# MPI / CUDA にも同じスクリプトを掛けられる (ofd_post はソルバーと同じ場所のもの、
+# 別の場所なら OFD_POST で指定)
+OFD_LAUNCHER="mpirun -n 2" OFD_ARGS="-p 1 1 2" \
+  sh data/sample/dipole_gain_check.sh /path/to/bin/ofd_mpi /tmp/gain-mpi
+OFD_ARGS="-cpu" sh data/sample/dipole_gain_check.sh /path/to/bin/ofd_cuda /tmp/gain-cuda
+```
+
+| 判定 | 期待値 | 根拠 | 実測 (2026-11) |
+|---|---|---|---|
+| (1/4π)∮G dΩ | 1 ± 3% | 損失が無いので放射電力 = 受け入れた電力 | 1.0007 |
+| 同 (`matchingloss = 1`) | 1 − \|Γ\|² ± 3% | 分母が給電線からの電力 Pin/(1−\|Γ\|²)。Γ は ofd.log の 3 GHz の反射 | 0.6523 (期待 0.6518) |
+| 正面 (θ = 90°) の利得 | 2.15 dBi ± 0.4 dB | 半波長ダイポールの指向性 1.64 | 2.34 dBi |
+| 軸方向 (θ = 0°) | −20 dB 未満 | 零点 | −240 dB |
+| far0d.log の正面 (θ = 90°, φ = 0°) | far1d と同じ ±0.01 dB | z 軸まわりの対称性 | 2.3362 / 2.3362 |
+| far0d.log の RHCP / LHCP | E-abs − 3.0103 dB ±0.01 | 直線偏波は両円偏波に半分ずつ | −0.6741 / −0.6741 |
+
+積分は far2d.log (θ, φ とも 10° 刻み) の台形則です。領域は dipole.ofd と同じセルで
+±0.15 m に広げています。dipole.ofd の大きさ (先端から 0.5λ で Mur-1st) では
+境界の反射で積分が 0.94 になります。遠方界の係数・入力電力の式に入れた 7 通りの
+誤り (8π→4π、1/2 の欠落、不整合損の無視、Pin の虚部の欠落、電流の半ステップの
+欠落、面素の誤りなど) はすべて NG になります。
+
+### 平面波の全電界の検証
+
+ソルバーは散乱界で解き、ofd_post が近傍界の表示で入射界 (`post/planewave.c`) を
+足して全電界にします (`near1dnoinc = 0` / `near2dnoinc = 0`、既定)。入射界の
+位相の基準点・向き・波数が違っても普通に終わるので、周期境界で無限に広い
+完全導体の平板に平面波を垂直に当て、導体の法線上の線を解析解と比べます
+(`data/sample/pec_plate.ofd` + `data/sample/pec_plate_check.sh`)。
+
+```sh
+sh data/sample/pec_plate_check.sh /path/to/bin/ofd /tmp/pec
+```
+
+| 判定 | 解析解 | 許容 | 実測 (2026-11) |
+|---|---|---|---|
+| 全電界 (導体の前) | \|E\| = 2\|sin kz\| (定在波) | ±0.1 | 0.053 (λ/20 の格子の数値分散) |
+| 全電界 (導体の中) | 0 | < 1e-3 | 2e-7 |
+| 散乱界 (全域) | \|Es\| = 1 | ±0.03 | 0.008 |
+
+線 (near1d) と面 (near2d) は入射界を別々のコードで足すので、両方を判定します。
+入射界の符号・中心・波数 (5%)・位相の欠落、入射界を引く・noinc を反転する
+変異はすべて NG になります。MPI / CUDA には `OFD_LAUNCHER` / `OFD_ARGS` で
+同じスクリプトを掛けられます (CI の 5 ジョブで実行)。
+
+### 後処理を HDF5 から読む (`ofd_post -h5`)
+
+ofd_post は既定で `ofd.out` を読みます。`-h5` を付けると、代わりに
+`time_series_data.h5` を読みます (`post/readhdf5.c`)。ソルバーは HDF5 に、後処理用の
+グループ `/post` を追加で書きます (表示側の既存のパスは変えていません。
+`include/ofd_hdf5.h`)。中身は次の 3 つです。
+
+- 余白込みの近傍界 DFT。`/freqdomain` は物理領域だけですが、節点補間は境界で余白の H を読むので、こちらが要ります
+- 給電の構造体
+- 入力電力 `Pin`
+
+```sh
+ofd_post -h5 -n 4 dipole.ofd        # ofd.out の代わりに time_series_data.h5 を読む
+sh data/sample/hdf5_post_check.sh /path/to/bin/ofd /tmp/h5post
+```
+
+`hdf5_post_check.sh` は 4 サンプル (dipole / dipole_couple / loop_load / sphere) で、
+ofd.out から読んだ場合と HDF5 から読んだ場合とで、ofd_post の出力 (`*.log` と
+`ev.ev2` / `ev.ev3`) がバイト単位で一致することを確かめます。CI の 5 ジョブで実行し、
+MPI / CUDA の書き手 (集約後の配列) も含みます。HDF5 の出力を止めた (`hdf5 = 0`) 場合は
+使えません。`/post` は gzip で圧縮して書くので、ファイルの増え方は dipole で 12%
+(5.2 → 5.9 MB) です。
+
+### スレッド数による結果の不変性
+
+```sh
+sh data/sample/thread_check.sh /path/to/bin/ofd /tmp/thread
+```
+
+8 通りのサンプル (dipole / sphere / debye / pml_reflection / tpa_slab /
+dipole_couple / vector_lossy_feed とその `-vector`) を `-n 1` と `-n 4` で走らせ、
+`ofd.log` (スレッド数・日時・所要時間の行を除く) と ofd_post の `*.log` が
+一致することを確かめます。OpenMP の並列ループにデータ競合があると値がずれます
+(`sol/average.c` の `reduction` を外すと複数のサンプルで不一致になることを確認済み)。
+ofd.out のバイト比較では、違いは収束履歴の平均値 (reduction の加算順で最後の桁が
+揺らぐ) だけで、ログの 6 桁には現れません。CI の CPU 3 ジョブと build-mpi (2 プロセス、
+`OFD_LAUNCHER` / `OFD_ARGS` で指定) で実行します。CUDA 版は `-n` を持たず、`-cpu` 実行の
+更新ループも OpenMP 化されていないので対象外です。
+
 ### 二光子吸収 (TPA) 非線形材料
 
 メタマテリアル装荷 Si 導波路の光活性化関数
@@ -313,6 +473,8 @@ OFD_ARGS="-cpu" sh data/sample/tpa_slab_check.sh /path/to/bin/ofd_cuda /tmp/tpa-
 
 # 領域分割の取り方によらず結果が一致することの検証 (MPI 版)
 sh data/sample/tpa_decomp_check.sh /path/to/bin/ofd_mpi /tmp/tpa-decomp
+# 同じく 3 次元に広がる場で (TPA 層を x / y とも半分にした tpa_half、周期境界を y / z に回した pbc_yz を含む 8 サンプル)
+sh data/sample/decomp_check.sh /path/to/bin/ofd_mpi /tmp/decomp
 ```
 
 #### 実装ごとの対応状況
@@ -329,6 +491,14 @@ MPI 版では `updateTpa` が `|E|²` の colocated 近似のために隣接セ�
 この FDTD の領域分割では E 更新が読むのは H の近傍だけなので、既存の
 `comm_X/Y/Z` は H 面しか交換していませんでした — TPA が E ハローを必要とする
 最初の処理です。
+
+`updateTpa` は Ex → Ey → Ez の順に減衰し、後の成分は減衰後の前の成分を読むので、
+MPI 版は成分の間で交換します (Ey/Ez の交換 → Ex を減衰 → Ex の交換 → Ey を減衰 →
+Ey の交換 → Ez を減衰)。以前は 3 成分を先にまとめて交換していて、領域境界の隣接値
+だけが減衰前になっていました。上の平板は x / y に一様で Ex しか無いので結果は
+一致していましたが、TPA 層を x の半分だけにすると x 分割で透過率が 6 桁目でずれて
+いました (0.575055 → 0.575053)。`data/sample/decomp_check.sh` の `tpa_half`
+(TPA 層を x / y とも半分にした柱。Ey / Ez も立つ) がこの場合を検証します。
 
 検証結果 (`data/sample/tpa_slab.ofd`、透過率は CPU 版と完全一致):
 
@@ -361,6 +531,45 @@ Windows (MSVC) での CUDA / MPI ビルドは CUDA Toolkit を管理者権限な
 `docs/windows-cuda-mpi-build.md` を参照してください (CUDA 13 は sm_60/70 を
 サポートしないため、`-DCMAKE_CUDA_ARCHITECTURES=<実機の値>` を渡すか、
 既定 (nvcc 13 以降は 75) に任せます)。
+
+#### 実機 GPU での確認手順 (GPU 側を変更したとき)
+
+CI は `-cpu` でしか走らないので、`cuda/` / `cuda_mpi/` を変更したら実機で
+**HDM (既定。`-cpu` も `-um` も付けない)** のまま一度走らせてください。HDM は
+場の配列が device にだけあるため、host から読むコードがあるとここでしか
+落ちません (HDF5 スナップショットと TPA の透過率測定で実際にありました)。
+
+Windows では Git Bash で実行します (`sh` / `awk` / `grep` / `cmp` を使います)。
+MS-MPI の `mpiexec` は `--oversubscribe` を受け付けないので、`MPIRUN_OPTS` に
+空白 1 文字を渡して既定のオプションを消します。
+
+```sh
+B=/path/to/bin          # ofd_cuda(.exe) / ofd_cuda_mpi(.exe) / ofd_post(.exe) のある場所
+
+# 1. TPA の解析解 (平面波 + TPA + 観測点。透過率測定が device の E を読む経路)
+sh data/sample/tpa_slab_check.sh "$B/ofd_cuda.exe" /tmp/gpu-tpa
+OFD_ARGS="-um" sh data/sample/tpa_slab_check.sh "$B/ofd_cuda.exe" /tmp/gpu-tpa-um
+
+# 2. CUDA+MPI の領域分割 (TPA の成分間の E 交換。分割は GPU 1 枚でも走る)
+MPIRUN=mpiexec MPIRUN_OPTS=" " DECOMP_LIST="1 1 1;1 1 2;2 1 1;1 2 1" \
+  sh data/sample/tpa_decomp_check.sh "$B/ofd_cuda_mpi.exe" /tmp/gpu-tpa-decomp
+MPIRUN=mpiexec MPIRUN_OPTS=" " DECOMP_LIST="1 1 1;1 1 2;2 1 1;1 2 1" CONV_TOL=1e-4 \
+  sh data/sample/decomp_check.sh "$B/ofd_cuda_mpi.exe" /tmp/gpu-decomp
+
+# 3. HDF5 から後処理 (スナップショットを host へ写す経路)
+sh data/sample/hdf5_post_check.sh "$B/ofd_cuda.exe" /tmp/gpu-h5post
+```
+
+合格の基準:
+
+- どの実行も `normal end` まで進むこと (0xC0000005 などで落ちないこと)
+- 1 の 3 点が解析解の ±7% に入ること。透過率は `-cpu` の値 (0.646838) と
+  float の精度の範囲 (6 桁目まで) で一致すること
+- 2 / 3 が `passed` で終わること。2 の透過率は分割によらず同じ値になること
+  (観測点 1 点の値の最大なので総和の順序に依存しない)
+
+確認したら、日付・環境・結果を上の段落と CLAUDE.md / AGENTS.md の CI の節に
+追記してください。
 
 | 実行 | 透過率 |
 |---|---|
@@ -401,14 +610,15 @@ grep "normal end" ofd.log
   - `build-cpu` / `build-macos` / `build-windows` — Linux (gcc) / macOS
     (AppleClang) / Windows (MSVC) で CPU ビルド + dipole サンプルの
     スモーク実行 (`normal end` 判定) + TPA スラブ検証 (解析解 ±7% 判定) +
-    ベクトル化更新経路の一致検証。Linux / macOS では熱解析のセル毎材料検証、
+    ベクトル化更新経路の一致検証 + HDF5 構成の検査。
+    Linux / macOS では熱解析のセル毎材料検証、
     Linux ではさらに平面波散乱の Mie 検証 (完全導体球 RCS) を実行
   - `build-mpi` — `ofd_mpi` をビルドし、dipole の 1/2 プロセス一致、
     TPA の領域分割不変性 (5 通り)、2 プロセスでの解析解、
-    2 プロセスでのベクトル化経路の一致を判定
+    2 プロセスでのベクトル化経路の一致と HDF5 構成を判定
   - `build-cuda` — `ofd_cuda` と `ofd_cuda_mpi` を nvcc でビルドし、
-    `-cpu` 実行で解析解・領域分割不変性・ベクトル化経路の一致を判定
-    (ランナーに GPU が無いためカーネル起動構成は未検証)
+    `-cpu` 実行で解析解・領域分割不変性・ベクトル化経路の一致・
+    HDF5 構成を判定 (ランナーに GPU が無いためカーネル起動構成は未検証)
 - ビルド成果物は artifact (`ofd-linux-x64` / `ofd-macos-arm64`) に保存
 - `v*` タグを push すると GitHub Release に `ofd-<platform>.tar.gz` が
   自動添付されます (OpenFDTD-X や nightly 統合テストの取得元)

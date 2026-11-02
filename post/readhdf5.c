@@ -11,25 +11,12 @@
 //#define TIME_STEP 200 // Solver.nout
 //#define MAX_STEP 1000 // Solver.maxiter
 
-#define COUPLING_DATASET_NAME "coupling"
 #define SPARA_DATASET_NAME "s_parameters"
-#define CROSS_SECTION_DATASET_NAME "cross_section"
 #define ZIN_DATASET_NAME "input_impedance"
 typedef struct {
     double magnitude_dB;
     double phase_deg;
-} coupling_data_t;
-
-typedef struct {
-    double magnitude_dB;
-    double phase_deg;
 } spara_data_t;
-
-typedef struct {
-    double frequency;
-    double backward;
-    double forward;
-} cross_section_data_t;
 
 typedef struct {
     double frequency;
@@ -41,17 +28,30 @@ typedef struct {
     double vswr;
 } input_impedance_data_t;
 
-void readhdf5() {
+int readhdf5(void) {
     // HDF5ファイルのオープン
     hid_t file_id = H5Fopen(FILE_NAME, H5F_ACC_RDONLY, H5P_DEFAULT);
     herr_t status;
+    if (file_id < 0) {
+        fprintf(stderr, "*** %s : cannot open\n", FILE_NAME);
+        return 1;
+    }
 
     // /metadata グループのオープン
     hid_t metadata_group_id = H5Gopen(file_id, "/metadata", H5P_DEFAULT);
 
     // Titleの読み込み
+    // 書き手 (sol/outputHdf5.c) は sizeof(Title) の固定長文字列で書く。
+    // メモリ側も同じ長さの文字列型で読む (以前は H5T_NATIVE_CHAR で読んでいて、
+    // 文字列型から整数型への変換は無いので H5Dread が失敗し Title が空のままだった)
     hid_t dataset_id = H5Dopen(metadata_group_id, "Title", H5P_DEFAULT);
-    status = H5Dread(dataset_id, H5T_NATIVE_CHAR, H5S_ALL, H5S_ALL, H5P_DEFAULT, Title);
+    {
+        hid_t strtype = H5Tcopy(H5T_C_S1);
+        H5Tset_size(strtype, sizeof(Title));
+        status = H5Dread(dataset_id, strtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, Title);
+        H5Tclose(strtype);
+        Title[sizeof(Title) - 1] = '\0';
+    }
     H5Dclose(dataset_id);
 
     // 各種整数型メタデータの読み込み
@@ -165,6 +165,27 @@ void readhdf5() {
             status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, Gline);
             H5Dclose(dataset_id);
         }
+
+        // MGline (線分ごとの材料 id) はファイル上は i4。
+        // ソルバー内部の id_t はビルド構成で幅が変わるので、
+        // i4 で受けてから id_t へ詰め替える (直接 H5Dread しない)。
+        MGline = (id_t *)malloc(sizeof(id_t) * NGline);
+        dataset_id = H5Dopen(geometry_group_id, "MGline", H5P_DEFAULT);
+        if ((dataset_id >= 0) && (MGline != NULL)) {
+            int32_t *buf = (int32_t *)malloc(sizeof(int32_t) * NGline);
+            if (buf != NULL) {
+                status = H5Dread(dataset_id, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, buf);
+                for (int64_t n = 0; n < NGline; n++) {
+                    MGline[n] = (id_t)buf[n];
+                }
+                free(buf);
+            }
+            H5Dclose(dataset_id);
+        }
+        else if (MGline != NULL) {
+            // 古いファイルには MGline が無い。全部真空扱いにして落ちないようにする
+            memset(MGline, 0, sizeof(id_t) * NGline);
+        }
     }
 
     if (geometry_group_id >= 0) H5Gclose(geometry_group_id);
@@ -177,19 +198,14 @@ void readhdf5() {
     Pin[0] =         (double *)malloc(sizeof(double)      * NFeed * NFreq2);
     Pin[1] =         (double *)malloc(sizeof(double)      * NFeed * NFreq2);
     Spara  =    (d_complex_t *)malloc(sizeof(d_complex_t) * NPoint * NFreq1);
-    Gline  = (double (*)[2][3])malloc(sizeof(double)      * NGline * 2 * 3);
-
-	//plot1d?(Far?)
-	size_t size;
-    size = NFreq2 * sizeof(d_complex_t *);
-    SurfaceEx = (d_complex_t **)malloc(size);
-    SurfaceEy = (d_complex_t **)malloc(size);
-    SurfaceEz = (d_complex_t **)malloc(size);
-    SurfaceHx = (d_complex_t **)malloc(size);
-    SurfaceHy = (d_complex_t **)malloc(size);
-    SurfaceHz = (d_complex_t **)malloc(size);
+    // Gline / MGline はここで確保しない。
+    // 上の /geometry の読み込みで確保済みで、ここで malloc し直すと
+    // **読んだ線分データを捨てて未初期化のバッファに差し替えてしまう**
+    // (かつ元の領域が漏れる)。形状が無い (NGline == 0) 場合は
+    // どちらも NULL のままで、描画側は NGline で判定する。
 
 	//plot2d?
+	size_t size;
     size = NN * NFreq2 * sizeof(float);
     cEx_r = (float *)malloc(size);
     cEx_i = (float *)malloc(size);
@@ -204,78 +220,89 @@ void readhdf5() {
     cHz_r = (float *)malloc(size);
     cHz_i = (float *)malloc(size);
 
-    // Surfaceデータの読み込み
-    dataset_id = H5Dopen(metadata_group_id, "NSurface", H5P_DEFAULT);
-    status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &NSurface);
-    H5Dclose(dataset_id);
-
-    // surface_t構造体に対応する複合データ型を再定義
-    hid_t memtype = H5Tcreate(H5T_COMPOUND, sizeof(surface_t));
-    H5Tinsert(memtype, "nx", HOFFSET(surface_t, nx), H5T_NATIVE_DOUBLE);
-    H5Tinsert(memtype, "ny", HOFFSET(surface_t, ny), H5T_NATIVE_DOUBLE);
-    H5Tinsert(memtype, "nz", HOFFSET(surface_t, nz), H5T_NATIVE_DOUBLE);
-    H5Tinsert(memtype, "x", HOFFSET(surface_t, x), H5T_NATIVE_DOUBLE);
-    H5Tinsert(memtype, "y", HOFFSET(surface_t, y), H5T_NATIVE_DOUBLE);
-    H5Tinsert(memtype, "z", HOFFSET(surface_t, z), H5T_NATIVE_DOUBLE);
-    H5Tinsert(memtype, "ds", HOFFSET(surface_t, ds), H5T_NATIVE_DOUBLE);
-
-	//surface_t
-    if (Surface == NULL) {
-        Surface = (surface_t *)malloc(NSurface * sizeof(surface_t));
+    // 遠方界の等価面
+    //
+    // ソルバーは /metadata を書く時点 (hdf5_close、時間ループの直後) ではまだ
+    // 遠方界を設定していない (alloc_farfield は outputChars の中) ので、通常の
+    // ファイルの NSurface は 0 で Surface も無い。面の幾何と場は ofd_post が
+    // 近傍界 DFT から setup_farfield() で作り直すので、ここでは ofd.out の読み手
+    // (readout) と同じ大きさ (alloc_farfield の式) で確保だけする。
+    // NSurface > 0 と Surface が書かれているファイルではそれを読む。
+    NSurface = 0;
+    if (H5Lexists(metadata_group_id, "NSurface", H5P_DEFAULT) > 0) {
+        int64_t ns = 0;
+        dataset_id = H5Dopen(metadata_group_id, "NSurface", H5P_DEFAULT);
+        status = H5Dread(dataset_id, H5T_NATIVE_INT64, H5S_ALL, H5S_ALL, H5P_DEFAULT, &ns);
+        H5Dclose(dataset_id);
+        NSurface = ns;
     }
-    dataset_id = H5Dopen(metadata_group_id, "Surface", H5P_DEFAULT);
-    status = H5Dread(dataset_id, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, Surface);
-    if (status < 0) {
-        fprintf(stderr, "Error reading dataset: Surface\n");
-    }
-    H5Dclose(dataset_id);
-    H5Tclose(memtype);
+    if ((NSurface > 0) && (H5Lexists(metadata_group_id, "Surface", H5P_DEFAULT) > 0)) {
+        // surface_t構造体に対応する複合データ型を再定義
+        hid_t memtype = H5Tcreate(H5T_COMPOUND, sizeof(surface_t));
+        H5Tinsert(memtype, "nx", HOFFSET(surface_t, nx), H5T_NATIVE_DOUBLE);
+        H5Tinsert(memtype, "ny", HOFFSET(surface_t, ny), H5T_NATIVE_DOUBLE);
+        H5Tinsert(memtype, "nz", HOFFSET(surface_t, nz), H5T_NATIVE_DOUBLE);
+        H5Tinsert(memtype, "x", HOFFSET(surface_t, x), H5T_NATIVE_DOUBLE);
+        H5Tinsert(memtype, "y", HOFFSET(surface_t, y), H5T_NATIVE_DOUBLE);
+        H5Tinsert(memtype, "z", HOFFSET(surface_t, z), H5T_NATIVE_DOUBLE);
+        H5Tinsert(memtype, "ds", HOFFSET(surface_t, ds), H5T_NATIVE_DOUBLE);
+        if (Surface == NULL) {
+            Surface = (surface_t *)malloc(NSurface * sizeof(surface_t));
+        }
+        dataset_id = H5Dopen(metadata_group_id, "Surface", H5P_DEFAULT);
+        status = H5Dread(dataset_id, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, Surface);
+        if (status < 0) {
+            fprintf(stderr, "Error reading dataset: Surface\n");
+        }
+        H5Dclose(dataset_id);
+        H5Tclose(memtype);
 
-    //size = NSurface * sizeof(surface_t);
-    //Surface = (surface_t *)malloc(size);
+        size = NFreq2 * sizeof(d_complex_t *);
+        SurfaceEx = (d_complex_t **)malloc(size);
+        SurfaceEy = (d_complex_t **)malloc(size);
+        SurfaceEz = (d_complex_t **)malloc(size);
+        SurfaceHx = (d_complex_t **)malloc(size);
+        SurfaceHy = (d_complex_t **)malloc(size);
+        SurfaceHz = (d_complex_t **)malloc(size);
+        for (int ifreq = 0; ifreq < NFreq2; ifreq++) {
+            size = NSurface * sizeof(d_complex_t);
+            SurfaceEx[ifreq] = (d_complex_t *)calloc(NSurface, sizeof(d_complex_t));
+            SurfaceEy[ifreq] = (d_complex_t *)calloc(NSurface, sizeof(d_complex_t));
+            SurfaceEz[ifreq] = (d_complex_t *)calloc(NSurface, sizeof(d_complex_t));
+            SurfaceHx[ifreq] = (d_complex_t *)calloc(NSurface, sizeof(d_complex_t));
+            SurfaceHy[ifreq] = (d_complex_t *)calloc(NSurface, sizeof(d_complex_t));
+            SurfaceHz[ifreq] = (d_complex_t *)calloc(NSurface, sizeof(d_complex_t));
+        }
+    }
+    else if ((Nx > 0) && (Ny > 0) && (Nz > 0)) {
+        alloc_farfield();
+    }
 
 //
-    // coupling データの読み込み
-    // MSVC は VLA 非対応のためフラット malloc (レイアウトは [NFreq1][NFeed][NPoint] と同一)
-    coupling_data_t *coupling_data =
-        (coupling_data_t *)malloc((size_t)NFreq1 * NFeed * NPoint * sizeof(coupling_data_t));
-    if (coupling_data == NULL) {
-        fprintf(stderr, "Error: malloc failed (coupling_data)\n");
-        return;
-    }
-
-    // coupling_data_t のデータ型を定義
-    hid_t datatype_id;
-    datatype_id = H5Tcreate(H5T_COMPOUND, sizeof(coupling_data_t));
-    H5Tinsert(datatype_id, "magnitude_dB", HOFFSET(coupling_data_t, magnitude_dB), H5T_NATIVE_DOUBLE);
-    H5Tinsert(datatype_id, "phase_deg", HOFFSET(coupling_data_t, phase_deg), H5T_NATIVE_DOUBLE);
-
-    dataset_id = H5Dopen(metadata_group_id, COUPLING_DATASET_NAME, H5P_DEFAULT);
-    status = H5Dread(dataset_id, datatype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, coupling_data);
-    if (status < 0) {
-        fprintf(stderr, "Error reading dataset: %s\n", COUPLING_DATASET_NAME);
-    }
-    //coupling_data から
-    H5Dclose(dataset_id);
-    H5Tclose(datatype_id);
-
-    free(coupling_data);
+    // coupling (/metadata/coupling) と散乱断面積 (/metadata/cross_section) は
+    // 読まない。ofd_post は coupling の保存値を使わず給電・観測点の時系列から
+    // その場で計算し直し (post/plot2dFreq.c が sol/outputCoupling.c の coupling()
+    // を呼ぶ)、散乱断面積はそもそも使わない (ソルバーの ofd.log と表示側向け)。
+    // 以前はここで coupling を読んで何にも使わずに捨てていた
 
     // s-parameters データの読み込み
+    // データセットが無い (書き手が作らなかった) ときに未初期化の値を使わないよう 0 で確保する
     spara_data_t *spara_data =
-        (spara_data_t *)malloc((size_t)NFreq1 * NPoint * sizeof(spara_data_t));
+        (spara_data_t *)calloc((size_t)NFreq1 * NPoint + 1, sizeof(spara_data_t));
     if (spara_data == NULL) {
         fprintf(stderr, "Error: malloc failed (spara_data)\n");
-        return;
+        return 1;
     }
 
     // データタイプを作成
-    datatype_id = H5Tcreate(H5T_COMPOUND, sizeof(spara_data_t));
+    hid_t datatype_id = H5Tcreate(H5T_COMPOUND, sizeof(spara_data_t));
     H5Tinsert(datatype_id, "magnitude_dB", HOFFSET(spara_data_t, magnitude_dB), H5T_NATIVE_DOUBLE);
     H5Tinsert(datatype_id, "phase_deg", HOFFSET(spara_data_t, phase_deg), H5T_NATIVE_DOUBLE);
 
-    dataset_id = H5Dopen(metadata_group_id, SPARA_DATASET_NAME, H5P_DEFAULT);
-    status = H5Dread(dataset_id, datatype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, spara_data);
+    // 観測点が無い (または frequency1 が無い) と書き手は作らない
+    const int has_spara = (NPoint > 0) && (NFreq1 > 0) && (H5Lexists(metadata_group_id, SPARA_DATASET_NAME, H5P_DEFAULT) > 0);
+    dataset_id = has_spara ? H5Dopen(metadata_group_id, SPARA_DATASET_NAME, H5P_DEFAULT) : -1;
+    status = has_spara ? H5Dread(dataset_id, datatype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, spara_data) : 0;
     if (status < 0) {
         fprintf(stderr, "Error reading dataset: %s\n", SPARA_DATASET_NAME);
     }
@@ -291,38 +318,20 @@ void readhdf5() {
             Spara[id] = d_complex(mag * cos(ph), mag * sin(ph));
         }
     }
-    H5Dclose(dataset_id);
+    if (dataset_id >= 0) H5Dclose(dataset_id);
     H5Tclose(datatype_id);
 
     free(spara_data);
 
-    // cross_section データの読み込み
-/*
-    cross_section_data_t cross_section_data[NFreq2];
-    
-    // cross_section_data_t 型のデータ型を定義
-    datatype_id = H5Tcreate(H5T_COMPOUND, sizeof(cross_section_data_t));
-    H5Tinsert(datatype_id, "frequency", HOFFSET(cross_section_data_t, frequency), H5T_NATIVE_DOUBLE);
-    H5Tinsert(datatype_id, "backward", HOFFSET(cross_section_data_t, backward), H5T_NATIVE_DOUBLE);
-    H5Tinsert(datatype_id, "forward", HOFFSET(cross_section_data_t, forward), H5T_NATIVE_DOUBLE);
-
-    dataset_id = H5Dopen(metadata_group_id, CROSS_SECTION_DATASET_NAME, H5P_DEFAULT);
-    status = H5Dread(dataset_id, datatype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, cross_section_data);
-    if (status < 0) {
-        fprintf(stderr, "Error reading dataset: %s\n", CROSS_SECTION_DATASET_NAME);
-    }
-    cross_section_data から 
-    H5Dclose(dataset_id);
-    H5Tclose(datatype_id);
-*/
 
     // input_impedance データの読み込み
     fprintf(stdout, "input_impedance_data (start)\n");
+    // 同上 (データセットが無ければ Zin / Ref は 0)
     input_impedance_data_t *input_impedance_data =
-        (input_impedance_data_t *)malloc((size_t)NFeed * NFreq1 * sizeof(input_impedance_data_t));
+        (input_impedance_data_t *)calloc((size_t)NFeed * NFreq1 + 1, sizeof(input_impedance_data_t));
     if (input_impedance_data == NULL) {
         fprintf(stderr, "Error: malloc failed (input_impedance_data)\n");
-        return;
+        return 1;
     }
     
     hid_t memtype_id;
@@ -337,8 +346,10 @@ void readhdf5() {
     H5Tinsert(memtype_id, "ref", HOFFSET(input_impedance_data_t, ref), H5T_NATIVE_DOUBLE);
     H5Tinsert(memtype_id, "vswr", HOFFSET(input_impedance_data_t, vswr), H5T_NATIVE_DOUBLE);
 
-    dataset_id = H5Dopen(metadata_group_id, ZIN_DATASET_NAME, H5P_DEFAULT);
-    status = H5Dread(dataset_id, memtype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, input_impedance_data);
+    // 給電が無い (または frequency1 が無い) と書き手は作らない
+    const int has_zin = (NFeed > 0) && (NFreq1 > 0) && (H5Lexists(metadata_group_id, ZIN_DATASET_NAME, H5P_DEFAULT) > 0);
+    dataset_id = has_zin ? H5Dopen(metadata_group_id, ZIN_DATASET_NAME, H5P_DEFAULT) : -1;
+    status = has_zin ? H5Dread(dataset_id, memtype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, input_impedance_data) : 0;
     if (status < 0) {
         fprintf(stderr, "Error reading dataset: %s\n", ZIN_DATASET_NAME);
     }
@@ -354,12 +365,93 @@ void readhdf5() {
         }
     }
     fprintf(stdout, "input_impedance_data (end)\n");
-    H5Dclose(dataset_id);
+    if (dataset_id >= 0) H5Dclose(dataset_id);
     H5Tclose(memtype_id);
+
+    free(input_impedance_data);
 
     // メタデータグループのクローズ
     H5Gclose(metadata_group_id);
 
+    // /post : ofd.out と同じ値 (sol/outputHdf5.c)。給電・入力電力・余白込みの
+    // 近傍界 DFT。無ければ (古いファイル) 後処理には使えないので 1 を返す
+    int ok = (H5Lexists(file_id, "/post", H5P_DEFAULT) > 0);
+    hid_t post_id = ok ? H5Gopen(file_id, "/post", H5P_DEFAULT) : -1;
+    if (post_id >= 0) {
+        // 近傍界 DFT {NFreq2, NN}
+        float *dst[12] = {cEx_r, cEx_i, cEy_r, cEy_i, cEz_r, cEz_i,
+                          cHx_r, cHx_i, cHy_r, cHy_i, cHz_r, cHz_i};
+        static const char *nm[12] = {
+            "cEx_r", "cEx_i", "cEy_r", "cEy_i", "cEz_r", "cEz_i",
+            "cHx_r", "cHx_i", "cHy_r", "cHy_i", "cHz_r", "cHz_i"};
+        if (NFreq2 > 0) {
+            for (int b = 0; b < 12; b++) {
+                dataset_id = H5Dopen(post_id, nm[b], H5P_DEFAULT);
+                if ((dataset_id < 0) || (dst[b] == NULL)) { ok = 0; continue; }
+                status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, dst[b]);
+                if (status < 0) ok = 0;
+                H5Dclose(dataset_id);
+            }
+        }
+
+        // 給電 (dir は int で書いてある)
+        if (NFeed > 0) {
+            typedef struct {
+                int dir, i, j, k;
+                double dx, dy, dz, volt, delay, z0;
+            } h5feed_t;
+            h5feed_t *f = (h5feed_t *)malloc((size_t)NFeed * sizeof(h5feed_t));
+            hid_t t = H5Tcreate(H5T_COMPOUND, sizeof(h5feed_t));
+            H5Tinsert(t, "dir",   HOFFSET(h5feed_t, dir),   H5T_NATIVE_INT);
+            H5Tinsert(t, "i",     HOFFSET(h5feed_t, i),     H5T_NATIVE_INT);
+            H5Tinsert(t, "j",     HOFFSET(h5feed_t, j),     H5T_NATIVE_INT);
+            H5Tinsert(t, "k",     HOFFSET(h5feed_t, k),     H5T_NATIVE_INT);
+            H5Tinsert(t, "dx",    HOFFSET(h5feed_t, dx),    H5T_NATIVE_DOUBLE);
+            H5Tinsert(t, "dy",    HOFFSET(h5feed_t, dy),    H5T_NATIVE_DOUBLE);
+            H5Tinsert(t, "dz",    HOFFSET(h5feed_t, dz),    H5T_NATIVE_DOUBLE);
+            H5Tinsert(t, "volt",  HOFFSET(h5feed_t, volt),  H5T_NATIVE_DOUBLE);
+            H5Tinsert(t, "delay", HOFFSET(h5feed_t, delay), H5T_NATIVE_DOUBLE);
+            H5Tinsert(t, "z0",    HOFFSET(h5feed_t, z0),    H5T_NATIVE_DOUBLE);
+            dataset_id = H5Dopen(post_id, "Feed", H5P_DEFAULT);
+            if ((dataset_id >= 0) && (f != NULL) && (Feed != NULL)
+             && (H5Dread(dataset_id, t, H5S_ALL, H5S_ALL, H5P_DEFAULT, f) >= 0)) {
+                for (int n = 0; n < NFeed; n++) {
+                    memset(&Feed[n], 0, sizeof(feed_t));
+                    Feed[n].dir = (char)f[n].dir;
+                    Feed[n].i = f[n].i; Feed[n].j = f[n].j; Feed[n].k = f[n].k;
+                    Feed[n].dx = f[n].dx; Feed[n].dy = f[n].dy; Feed[n].dz = f[n].dz;
+                    Feed[n].volt = f[n].volt; Feed[n].delay = f[n].delay; Feed[n].z0 = f[n].z0;
+                }
+            }
+            else {
+                ok = 0;
+            }
+            if (dataset_id >= 0) H5Dclose(dataset_id);
+            H5Tclose(t);
+            free(f);
+
+            // 入力電力
+            if (NFreq2 > 0) {
+                double *pin[2] = {Pin[0], Pin[1]};
+                const char *pn[2] = {"Pin0", "Pin1"};
+                for (int m = 0; m < 2; m++) {
+                    dataset_id = H5Dopen(post_id, pn[m], H5P_DEFAULT);
+                    if ((dataset_id < 0) || (pin[m] == NULL)
+                     || (H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, pin[m]) < 0)) {
+                        ok = 0;
+                    }
+                    if (dataset_id >= 0) H5Dclose(dataset_id);
+                }
+            }
+        }
+        H5Gclose(post_id);
+    }
+    if (!ok) {
+        fprintf(stderr, "*** %s : /post (near field / feed / input power) not found or incomplete\n", FILE_NAME);
+    }
+
     // HDF5ファイルのクローズ
     H5Fclose(file_id);
+
+    return ok ? 0 : 1;
 }

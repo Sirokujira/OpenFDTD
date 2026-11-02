@@ -7,6 +7,31 @@ setup Mur for Hx
 #include "ofd.h"
 #include "ofd_prototype.h"
 
+/*
+Mur-1st の係数 (setupMurHy.c / setupMurHz.c と共用)
+
+  h_out(n+1) = h_in(n) + g * (h_in(n+1) - h_out(n)),  g = (v dt - d) / (v dt + d)
+
+v = c / √(εr μr) は境界上の接線 E の材料 m の位相速度、d は境界セル幅。
+PEC は g = -1。
+
+sol/setup.c から移した。setup.c はセットアップ全体に依存していて
+ユニットテスト (tests/test_mur.c) に入れられないため。新しい .c を
+作らずここに置くのは、CUDA (SOURCES2) / MPI (SOURCES3) の手書きリストに
+このファイルが既に入っているから (.claude/rules/build-targets.md)。
+*/
+double factorMur(double d, id_t m)
+{
+	if (m != PEC) {
+		const double vdt = (C * Dt) / sqrt(Material[m].epsr * Material[m].amur);
+		return (vdt - d) / (vdt + d);
+	}
+	else {
+		return -1;
+	}
+}
+
+
 void setupMurHx(int mode)
 {
 	int64_t num = 0;

@@ -151,14 +151,24 @@ void solve(int io, double *tdft, FILE *fp)
         }
 
         // TPA (二光子吸収) 非線形減衰 (sol/updateTpa.c)
-        // 領域境界の E ハローを先に交換する : updateTpa は |E|^2 の colocated
-        // 近似のため隣接セルの E 成分を読む (CPU 版の E 更新は H しか読まないので
-        // 既存の comm_X/Y/Z(0) は H しか交換していない)
+        // updateTpa は |E|^2 の colocated 近似のため隣接セルの E 成分を読む
+        // (CPU 版の E 更新は H しか読まないので、既存の comm_X/Y/Z(0) は H しか
+        // 交換していない)。成分は Ex → Ey → Ez の順に減衰し、後の成分は減衰後の
+        // 前の成分を読むので、1 プロセスと同じ値にするには成分の間で交換する:
+        //   Ex : 減衰前の Ey (j-1, jMax) / Ez (k-1, kMax) を読む
+        //   Ey : 減衰後の Ex (i-1, iMax) と減衰前の Ez を読む
+        //   Ez : 減衰後の Ex と Ey (j-1, jMax) を読む
+        // 以前は 3 成分を先にまとめて交換していて、境界の隣接値だけ減衰前になり
+        // 結果が領域分割に依存していた (x 方向に一様でない場で表に出る。
+        // data/sample/decomp_check.sh の tpa_half)。
         if (NTpa) {
-            if (Npx > 1) comm_E_X();
             if (Npy > 1) comm_E_Y();
             if (Npz > 1) comm_E_Z();
-            updateTpa(t);
+            updateTpaComp(0, t);
+            if (Npx > 1) comm_E_X();
+            updateTpaComp(1, t);
+            if (Npy > 1) comm_E_Y();
+            updateTpaComp(2, t);
         }
 
         // point

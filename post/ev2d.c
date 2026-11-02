@@ -50,9 +50,31 @@ static void alloc_inc(void)
 }
 
 
+// 前の ev2d_init() の状態を解放する。post (ofd_post) は 1 プロセスで 1 回しか
+// 呼ばないが、2 回目の初期化で前のページと文字列が漏れないようにする
+// (ユニットテストは 1 プロセスで複数回呼ぶ)
+static void release(void)
+{
+	if ((ev2d_ndata != NULL) && (ev2d_data != NULL)) {
+		for (int page = 0; page <= ev2d_page; page++) {
+			for (int n = 0; n < ev2d_ndata[page]; n++) {
+				if (ev2d_data[page][n].idx == -3) free(ev2d_data[page][n].str);
+			}
+			free(ev2d_data[page]);
+		}
+	}
+	free(ev2d_ndata);
+	free(ev2d_data);
+	ev2d_ndata = NULL;
+	ev2d_data = NULL;
+}
+
+
 // initialize
 void ev2d_init(double width, double height)
 {
+	release();
+
 	// page
 	ev2d_page = -1;
 
@@ -319,7 +341,9 @@ static void ev2d_end_html(FILE *fp, const char fn[])
 	fprintf(fp, "\n");
 
 	// button
-	fprintf(fp, "<div id=\"page\">%d/%d</div>\n", (ev2d_page > 0 ? 1 : 0), (ev2d_page > 0 ? ev2d_page : 0));
+	// 初期表示は描画時 (plot() の JavaScript) と同じ「データのあるページ数」で出す。
+	// 以前は内部のページ番号 ev2d_page を出していて、3 ページのとき "1/2" になっていた
+	fprintf(fp, "<div id=\"page\">%d/%d</div>\n", (npage > 0 ? 1 : 0), npage);
 	fprintf(fp, "<input type=\"button\" value=\"|<\" onClick=\"first()\">\n");
 	fprintf(fp, "<input type=\"button\" value=\"<\" onClick=\"prev()\">\n");
 	fprintf(fp, "<input type=\"button\" value=\">\" onClick=\"next()\">\n");

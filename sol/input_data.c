@@ -32,6 +32,18 @@ int input_data(FILE *fp)
 	const char errfmt2[] = "*** invalid %s data\n";
 	const char errfmt3[] = "*** invalid %s data #%d\n";
 
+	// 入力の誤りで途中から返るとき、作業配列を解放してから返す
+	// (以前は 41 か所の return 1 がすべて解放せずに返っていた。ソルバーは
+	//  直後に終了するので実害は小さいが、ユニットテストや ASan で漏れが出る)。
+	// 作業配列はすべて NULL で初期化してあるので、未確保でも free してよい
+#define INPUT_FAIL() do { \
+		free(xr); free(yr); free(zr); free(dxr); free(dyr); free(dzr); \
+		free(xfeed); free(yfeed); free(zfeed); \
+		free(xpoint); free(ypoint); free(zpoint); \
+		free(dload); free(xload); free(yload); free(zload); free(cload); free(pload); \
+		return 1; \
+	} while (0)
+
 	// initialize
 
 	NMaterial = 2;  // air + PEC
@@ -121,22 +133,25 @@ int input_data(FILE *fp)
 			strcpy(prog, strkey);
 			if (strcmp(prog, "OpenFDTD") && strcmp(prog, "OpenTHFD")) {
 				printf("%s\n", "*** not OpenFDTD/OpenTHFD data");
-				return 1;
+				INPUT_FAIL();
 			}
 			if (ntoken < 3) {
 				printf("%s\n", "*** no version data");
-				return 1;
+				INPUT_FAIL();
 			}
 			version = (10 * atoi(token[1])) + atoi(token[2]);
 			nline++;
 		}
 		else if (!strcmp(strkey, "title")) {
-			strcpy(Title, strchr(strsave, '=') + 2);
+			// Title は 256 バイト固定 (行バッファは BUFSIZ)。長い title で
+			// あふれないよう切り詰める
+			strncpy(Title, strchr(strsave, '=') + 2, sizeof(Title) - 1);
+			Title[sizeof(Title) - 1] = '\0';
 		}
 		else if (!strcmp(strkey, "xmesh")) {
 			if ((ntoken < 5) || (ntoken % 2 == 0)) {
 				printf(errfmt2, strkey);
-				return 1;
+				INPUT_FAIL();
 			}
 			nxr = (ntoken - 3) / 2;
 			xr = (double *)malloc((nxr + 1) * sizeof(double));
@@ -150,7 +165,7 @@ int input_data(FILE *fp)
 		else if (!strcmp(strkey, "ymesh")) {
 			if ((ntoken < 5) || (ntoken % 2 == 0)) {
 				printf(errfmt2, strkey);
-				return 1;
+				INPUT_FAIL();
 			}
 			nyr = (ntoken - 3) / 2;
 			yr = (double *)malloc((nyr + 1) * sizeof(double));
@@ -164,7 +179,7 @@ int input_data(FILE *fp)
 		else if (!strcmp(strkey, "zmesh")) {
 			if ((ntoken < 5) || (ntoken % 2 == 0)) {
 				printf(errfmt2, strkey);
-				return 1;
+				INPUT_FAIL();
 			}
 			nzr = (ntoken - 3) / 2;
 			zr = (double *)malloc((nzr + 1) * sizeof(double));
@@ -176,9 +191,13 @@ int input_data(FILE *fp)
 			}
 		}
 		else if (!strcmp(strkey, "material")) {
-			if (ntoken < 7) {
+			// Ver. 2.1 以前は type の欄が無く "material = εr σ μr σm" (6 トークン)。
+			// 以前は一律に 7 トークンを要求していたため、下の旧形式の分岐に
+			// 到達できず旧形式の入力がすべて "invalid material" になっていた
+			const int legacy = !strcmp(prog, "OpenFDTD") && (version < 22);
+			if (ntoken < (legacy ? 6 : 7)) {
 				printf(errfmt3, strkey, (int)NMaterial - 1);
-				return 1;
+				INPUT_FAIL();
 			}
 			if (NMaterial % array_inc == 2) {   // 2 : initial set (air + PEC)
 				Material = (material_t *)realloc(Material, (NMaterial + array_inc) * sizeof(material_t));
@@ -186,7 +205,7 @@ int input_data(FILE *fp)
 
 			if (NMaterial >= MAXMATERIAL) {
 				printf(errfmt1, strkey, (int)NMaterial - 1);
-				return 1;
+				INPUT_FAIL();
 			}
 
 			int type = 1;
@@ -219,11 +238,11 @@ int input_data(FILE *fp)
 			}
 			if ((type == 1) && ((epsr <= 0) || (esgm < 0) || (amur <= 0) || (msgm < 0))) {
 				printf(errfmt3, strkey, (int)NMaterial - 1);
-				return 1;
+				INPUT_FAIL();
 			}
 			else if ((type == 2) && (einf <= 0)) {
 				printf(errfmt3, strkey, (int)NMaterial - 1);
-				return 1;
+				INPUT_FAIL();
 			}
 			Material[NMaterial].type = type;
 			Material[NMaterial].epsr = epsr;
@@ -240,7 +259,7 @@ int input_data(FILE *fp)
 		else if (!strcmp(strkey, "geometry")) {
 			if (ntoken < 4) {
 				printf(errfmt3, strkey, (int)NGeometry + 1);
-				return 1;
+				INPUT_FAIL();
 			}
 			if (NGeometry % array_inc == 0) {
 				Geometry = (geometry_t *)realloc(Geometry, (NGeometry + array_inc) * sizeof(geometry_t));
@@ -288,11 +307,11 @@ int input_data(FILE *fp)
 					//   51,52,53 円錐台 (X,Y,Z)
 					printf("*** invalid geometry shape %d (data #%d)\n",
 					       Geometry[NGeometry].shape, (int)NGeometry + 1);
-					return 1;
+					INPUT_FAIL();
 			}
 			if (ntoken < 4 + ngeom) {
 				printf(errfmt3, strkey, (int)NGeometry + 1);
-				return 1;
+				INPUT_FAIL();
 			}
 			for (int n = 0; n < ngeom; n++) {
 				Geometry[NGeometry].g[n] = atof(token[4 + n]);
@@ -319,13 +338,13 @@ int input_data(FILE *fp)
 			}
 			else {
 				printf(errfmt3, strkey, NFeed + 1);
-				return 1;
+				INPUT_FAIL();
 			}
 		}
 		else if (!strcmp(strkey, "planewave")) {
 			if (ntoken < 5) {
 				printf(errfmt2, strkey);
-				return 1;
+				INPUT_FAIL();
 			}
 			IPlanewave = 1;
 			Planewave.theta = atof(token[2]);
@@ -336,7 +355,7 @@ int input_data(FILE *fp)
 			//if (((NPoint == 0) && (ntoken < 7)) || (ntoken < 6)) {
 			if (ntoken < 6) {
 				printf(errfmt3, strkey, NPoint + 1);
-				return 1;
+				INPUT_FAIL();
 			}
 			Point  = (point_t *)realloc(Point,  (NPoint + 1) * sizeof(point_t));
 			xpoint = (double *) realloc(xpoint, (NPoint + 1) * sizeof(double));
@@ -360,7 +379,7 @@ int input_data(FILE *fp)
 		else if (!strcmp(strkey, "load")) {
 			if (ntoken < 8) {
 				printf(errfmt3, strkey, nload + 1);
-				return 1;
+				INPUT_FAIL();
 			}
 			dload = (char   *)realloc(dload, (nload + 1) * sizeof(char));
 			xload = (double *)realloc(xload, (nload + 1) * sizeof(double));
@@ -381,13 +400,13 @@ int input_data(FILE *fp)
 			// 出典 : Honda, Shoji, Amemiya, Opt. Lett. 49, 5811 (2024) (Si: β=424 cm/GW)
 			if (ntoken < 4) {
 				printf(errfmt3, strkey, NTpa + 1);
-				return 1;
+				INPUT_FAIL();
 			}
 			const int    mtpa = atoi(token[2]);
 			const double btpa = atof(token[3]);
 			if ((mtpa < 0) || (mtpa >= MAXMATERIAL) || (btpa < 0)) {
 				printf(errfmt3, strkey, NTpa + 1);
-				return 1;
+				INPUT_FAIL();
 			}
 			Tpa = (tpa_t *)realloc(Tpa, (NTpa + 1) * sizeof(tpa_t));
 			Tpa[NTpa].m    = (id_t)mtpa;
@@ -399,7 +418,7 @@ int input_data(FILE *fp)
 			WaveAmp = atof(token[2]);
 			if (WaveAmp < 0) {
 				printf(errfmt2, strkey);
-				return 1;
+				INPUT_FAIL();
 			}
 		}
 		else if (!strcmp(strkey, "rfeed")) {
@@ -417,7 +436,7 @@ int input_data(FILE *fp)
 			}
 			else {
 				printf(errfmt2, strkey);
-				return 1;
+				INPUT_FAIL();
 			}
 		}
 		else if (!strcmp(strkey, "pbc")) {
@@ -428,7 +447,7 @@ int input_data(FILE *fp)
 			}
 			else {
 				printf(errfmt2, strkey);
-				return 1;
+				INPUT_FAIL();
 			}
 		}
 		else if (!strcmp(strkey, "frequency1")) {
@@ -438,7 +457,7 @@ int input_data(FILE *fp)
 				int fdiv = atoi(token[4]);
 				if (fdiv < 0) {
 					printf(errfmt2, strkey);
-					return 1;
+					INPUT_FAIL();
 				}
 				double df = (fdiv > 0) ? (f1 - f0) / fdiv : 0;
 				NFreq1 = fdiv + 1;
@@ -455,7 +474,7 @@ int input_data(FILE *fp)
 				int fdiv = atoi(token[4]);
 				if (fdiv < 0) {
 					printf(errfmt2, strkey);
-					return 1;
+					INPUT_FAIL();
 				}
 				double df = (fdiv > 0) ? (f1 - f0) / fdiv : 0;
 				NFreq2 = fdiv + 1;
@@ -472,7 +491,7 @@ int input_data(FILE *fp)
 				int fdiv = atoi(token[4]);
 				if (fdiv < 0) {
 					printf(errfmt2, strkey);
-					return 1;
+					INPUT_FAIL();
 				}
 				double df = (fdiv > 0) ? (f1 - f0) / fdiv : 0;
 				NFreq1 = NFreq2 = fdiv + 1;
@@ -488,7 +507,9 @@ int input_data(FILE *fp)
 				Solver.maxiter = atoi(token[2]);
 				Solver.nout    = atoi(token[3]);
 				Solver.converg = atof(token[4]);
-				if (Solver.maxiter % Solver.nout != 0) {
+				// nout <= 0 は後段の検査で "invalid solver data" にする
+				// (ここで剰余をとると 0 除算で落ちる)
+				if ((Solver.nout > 0) && (Solver.maxiter % Solver.nout != 0)) {
 					Solver.maxiter = (Solver.maxiter / Solver.nout + 1) * Solver.nout;
 				}
 			}
@@ -536,41 +557,46 @@ int input_data(FILE *fp)
 
 	if (nxr <= 0) {
 		printf("%s\n", "*** no xmesh data");
-		return 1;
+		INPUT_FAIL();
 	}
 	if (nyr <= 0) {
 		printf("%s\n", "*** no ymesh data");
-		return 1;
+		INPUT_FAIL();
 	}
 	if (nzr <= 0) {
 		printf("%s\n", "*** no zmesh data");
-		return 1;
+		INPUT_FAIL();
 	}
 	for (int i = 0; i < nxr; i++) {
 		if ((xr[i] >= xr[i + 1]) || (dxr[i] <= 0)) {
 			printf("%s\n", "*** invalid xmesh data");
-			return 1;
+			INPUT_FAIL();
 		}
 	}
 	for (int j = 0; j < nyr; j++) {
 		if ((yr[j] >= yr[j + 1]) || (dyr[j] <= 0)) {
 			printf("%s\n", "*** invalid ymesh data");
-			return 1;
+			INPUT_FAIL();
 		}
 	}
 	for (int k = 0; k < nzr; k++) {
 		if ((zr[k] >= zr[k + 1]) || (dzr[k] <= 0)) {
 			printf("%s\n", "*** invalid zmesh data");
-			return 1;
+			INPUT_FAIL();
 		}
 	}
 	if (!NFeed && !IPlanewave) {
 		printf("%s\n", "*** no source");
-		return 1;
+		INPUT_FAIL();
 	}
 	if (NFeed && IPlanewave) {
 		printf("%s\n", "*** feed and planewave");
-		return 1;
+		INPUT_FAIL();
+	}
+	// 平面波のパルス幅と基準点は周波数から決める (sol/input2.c setup_planewave)
+	if (IPlanewave && (NFreq1 <= 0) && (NFreq2 <= 0)) {
+		printf("%s\n", "*** planewave requires frequency1 or frequency2");
+		INPUT_FAIL();
 	}
 	// HDF5 の瞬時値スナップショットは Solver.nout ごとにしか出せないので、
 	// hdf5 キーの interval はその倍数に切り上げる
@@ -581,46 +607,46 @@ int input_data(FILE *fp)
 
 	if ((Solver.maxiter <= 0) || (Solver.nout <= 0)) {
 		printf("%s\n", "*** invalid solver data");
-		return 1;
+		INPUT_FAIL();
 	}
 
 	for (int64_t n = 0; n < NGeometry; n++) {
 		if (Geometry[n].m >= NMaterial) {
 			printf("*** invalid material id of geometry data #%zd\n", n + 1);
-			return 1;
+			INPUT_FAIL();
 		}
 	}
 	for (int n = 0; n < NFeed; n++) {
 		if ((Feed[n].dir != 'X') && (Feed[n].dir != 'Y') && (Feed[n].dir != 'Z')) {
 			printf("%s #%d\n", "*** invalid feed direction", n + 1);
-			return 1;
+			INPUT_FAIL();
 		}
 	}
 	for (int n = 0; n < NPoint; n++) {
 		if ((Point[n].dir != 'X') && (Point[n].dir != 'Y') && (Point[n].dir != 'Z')) {
 			printf("%s #%d\n", "*** invalid point direction", n + 1);
-			return 1;
+			INPUT_FAIL();
 		}
 	}
 	for (int n = 0; n < nload; n++) {
 		if (((dload[n] != 'X') && (dload[n] != 'Y') && (dload[n] != 'Z')) ||
 		    ((cload[n] != 'R') && (cload[n] != 'C') && (cload[n] != 'L'))) {
 			printf("*** invalid load parameter #%d\n", n + 1);
-			return 1;
+			INPUT_FAIL();
 		}
 	}
 	// TPA : material id の範囲チェック (0=真空, 1=PEC, 2〜=ユーザー材料)
 	for (int n = 0; n < NTpa; n++) {
 		if (Tpa[n].m >= NMaterial) {
 			printf("*** invalid tpa material id #%d\n", n + 1);
-			return 1;
+			INPUT_FAIL();
 		}
 	}
 	// CW 波源 (waveamp) : 平面波専用。角周波数は frequency1 (無ければ frequency2) の先頭値
 	if (WaveAmp > 0) {
 		if (!IPlanewave) {
 			printf("%s\n", "*** waveamp requires planewave");
-			return 1;
+			INPUT_FAIL();
 		}
 		if      (NFreq1 > 0) {
 			WaveOmega = 2 * PI * Freq1[0];
@@ -630,7 +656,7 @@ int input_data(FILE *fp)
 		}
 		else {
 			printf("%s\n", "*** waveamp requires frequency1 or frequency2");
-			return 1;
+			INPUT_FAIL();
 		}
 	}
 
@@ -702,6 +728,16 @@ int input_data(FILE *fp)
 		free(ypoint);
 		free(zpoint);
 	}
+	if (nload) {
+		free(dload);
+		free(xload);
+		free(yload);
+		free(zload);
+		free(cload);
+		free(pload);
+	}
 
 	return 0;
 }
+
+#undef INPUT_FAIL

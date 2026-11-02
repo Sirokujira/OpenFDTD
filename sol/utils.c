@@ -129,3 +129,28 @@ d_complex_t calcdft(int ntime, const double f[], double freq, double dt, double 
 
 	return d_complex(sum_r, sum_i);
 }
+
+
+// 複素数を振幅[dB] と位相[deg] に直す
+//
+// S パラメータ (sol/outputSpara.c) と結合度 (sol/outputCoupling.c) は
+// ログと HDF5 の両方に同じ量を出す。以前は 4 箇所に同じ式が書いてあり
+// (しかも HDF5 側は fmax、ログ側は MAX と書き方まで揃っていなかった)、
+// 片方だけ直すと **GUI が読む HDF5 とログが食い違う**状態だった。
+//
+// ここに置くのは、ofd_post が outputCoupling.c と utils.c を含むが
+// outputSpara.c を含まないため。outputSpara.c に置くと ofd_post だけが
+// リンクエラーになる (.claude/rules/build-targets.md)。
+//
+// |z| = 0 で log10 が -inf になるので 1e-12 (ofd.h の EPS2 と同じ値) で
+// 下限を切る。20*log10(1e-12) = -240 dB が底値。
+// utils.c は ofd.h を include しない (テストしやすさのため) ので、
+// 値をここに直接書いている。
+void dbDeg(d_complex_t z, double *mag_dB, double *phase_deg)
+{
+	const double floor_abs = 1e-12;   /* = EPS2 */
+	const double a = d_abs(z);
+
+	if (mag_dB    != NULL) *mag_dB    = 20 * log10((a > floor_abs) ? a : floor_abs);
+	if (phase_deg != NULL) *phase_deg = d_deg(z);
+}
